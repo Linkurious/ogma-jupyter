@@ -29,10 +29,12 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. User can pan and zoom the visualization using mouse or trackpad
   4. Same notebook runs unchanged in VSCode, Google Colab, and Databricks
   5. API feels Pythonic with snake_case conventions and familiar patterns
-**Plans**: TBD
+**Plans**: 3 plans
 
 Plans:
-- [ ] TBD
+- [ ] 01-01-PLAN.md — Package scaffold and Python core (pyproject.toml, widget.py, config.py, errors.py)
+- [ ] 01-02-PLAN.md — JavaScript widget and build pipeline (TypeScript widget, esbuild, hatch-jupyter-builder)
+- [ ] 01-03-PLAN.md — Developer experience and platform verification (examples, README, cross-platform testing)
 
 ### Phase 2: Core Data & Visualization
 **Goal**: Users can create and style graphs from Python data sources
@@ -86,7 +88,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation & Platform | 0/TBD | Not started | - |
+| 1. Foundation & Platform | 0/3 | Planned | - |
 | 2. Core Data & Visualization | 0/TBD | Not started | - |
 | 3. Interactivity & Python API | 0/TBD | Not started | - |
 | 4. Advanced Features | 0/TBD | Not started | - |
