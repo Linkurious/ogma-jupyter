@@ -1,5 +1,7 @@
 # Compiled JavaScript assets (built from TypeScript)
-src/ogma_jupyter/static/
+# Note: widget.js is tracked for development convenience
+src/ogma_jupyter/static/*.map
+src/ogma_jupyter/static/*.LICENSE.txt
 
 # Node.js
 node_modules/
