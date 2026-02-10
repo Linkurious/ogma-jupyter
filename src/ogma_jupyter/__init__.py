@@ -29,6 +29,8 @@ Functions
 ---------
 demo
     Create a demo widget with sample graph data.
+get_example_path
+    Get the path to bundled example notebooks.
 
 Exceptions
 ----------
@@ -52,6 +54,8 @@ https://doc.linkurious.com/ogma/latest/ : Ogma documentation
 https://anywidget.dev : anywidget framework documentation
 """
 
+from pathlib import Path
+
 from ._version import __version__
 from .errors import OgmaDataError, OgmaError, OgmaLicenseError, OgmaRenderError
 from .widget import OgmaWidget
@@ -60,6 +64,58 @@ from .widget import OgmaWidget
 from .config import _maybe_show_welcome
 
 _maybe_show_welcome()
+
+
+def get_example_path() -> Path:
+    """Get the path to bundled example notebooks.
+
+    Returns the absolute path to the examples directory included
+    with the ogma-jupyter package. You can copy these examples
+    to your workspace to experiment with them.
+
+    Returns
+    -------
+    Path
+        Absolute path to the examples directory.
+
+    Examples
+    --------
+    >>> import ogma_jupyter as og
+    >>> examples_dir = og.get_example_path()
+    >>> print(examples_dir)  # doctest: +SKIP
+    /path/to/ogma_jupyter/examples
+
+    >>> # List available examples
+    >>> list(og.get_example_path().glob('*.ipynb'))  # doctest: +SKIP
+    [PosixPath('.../01-quickstart.ipynb'), PosixPath('.../02-basic-graph.ipynb')]
+
+    Notes
+    -----
+    The examples directory contains Jupyter notebooks demonstrating
+    various features of ogma-jupyter. Copy them to your workspace
+    to modify and experiment with the code.
+    """
+    # Navigate from this file to the examples directory
+    # __init__.py is in src/ogma_jupyter/, examples/ is at project root
+    # Path: src/ogma_jupyter/__init__.py -> src/ogma_jupyter -> src -> project_root
+    package_dir = Path(__file__).parent
+    examples_dir = package_dir.parent.parent / "examples"
+
+    # For installed packages, examples may be at a different location
+    if not examples_dir.exists():
+        # Try relative to package installation
+        import importlib.resources
+        try:
+            # Python 3.9+
+            with importlib.resources.as_file(
+                importlib.resources.files("ogma_jupyter").joinpath("../../examples")
+            ) as path:
+                examples_dir = path
+        except (TypeError, FileNotFoundError):
+            # Fallback: assume development layout
+            pass
+
+    return examples_dir.resolve()
 
 
 def demo() -> OgmaWidget:
@@ -108,4 +164,5 @@ __all__ = [
     "OgmaDataError",
     "OgmaRenderError",
     "demo",
+    "get_example_path",
 ]

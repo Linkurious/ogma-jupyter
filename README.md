@@ -1,32 +1,15 @@
 # ogma-jupyter
 
+[![PyPI version](https://badge.fury.io/py/ogma-jupyter.svg)](https://badge.fury.io/py/ogma-jupyter)
+[![Python versions](https://img.shields.io/pypi/pyversions/ogma-jupyter.svg)](https://pypi.org/project/ogma-jupyter/)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 Interactive Ogma graph visualization for Jupyter notebooks.
 
 ## Installation
 
 ```bash
 pip install ogma-jupyter
-```
-
-## Quick Start
-
-```python
-import ogma_jupyter as og
-
-# Create a simple graph widget
-widget = og.OgmaWidget()
-widget.graph_data = {
-    'nodes': [{'id': 'a'}, {'id': 'b'}, {'id': 'c'}],
-    'edges': [
-        {'source': 'a', 'target': 'b'},
-        {'source': 'b', 'target': 'c'},
-        {'source': 'c', 'target': 'a'}
-    ]
-}
-widget
-
-# Or use the demo function
-og.demo()
 ```
 
 ## Ogma License Configuration
@@ -66,6 +49,53 @@ Contact Linkurious or visit the [Linkurious customer portal](https://get.linkuri
 ### Development Without Ogma
 
 The widget includes a graceful fallback when Ogma is not available. You can develop and test the Python package infrastructure without having Ogma configured - the widget will display a placeholder indicating that Ogma needs to be configured.
+
+## Quick Start
+
+```python
+import ogma_jupyter as og
+
+# Create a simple graph widget
+widget = og.OgmaWidget()
+widget.graph_data = {
+    'nodes': [{'id': 'a'}, {'id': 'b'}, {'id': 'c'}],
+    'edges': [
+        {'source': 'a', 'target': 'b'},
+        {'source': 'b', 'target': 'c'},
+        {'source': 'c', 'target': 'a'}
+    ]
+}
+widget
+
+# Or use the demo function
+og.demo()
+```
+
+## Examples
+
+Bundled example notebooks are included in the package:
+
+- **[01-quickstart.ipynb](examples/01-quickstart.ipynb)** - Quick introduction to ogma-jupyter
+- **[02-basic-graph.ipynb](examples/02-basic-graph.ipynb)** - Creating graphs with node/edge attributes
+
+To find the examples directory in your installation:
+
+```python
+import ogma_jupyter as og
+print(og.get_example_path())
+```
+
+You can copy the examples to your workspace to experiment with them.
+
+## Supported Platforms
+
+ogma-jupyter works in:
+
+- **JupyterLab** - Full support
+- **VSCode notebooks** - Full support
+- **Google Colab** - Full support
+- **Databricks notebooks** - Supported (requires Ogma license)
+- **Classic Jupyter Notebook** - Full support
 
 ## Development
 
