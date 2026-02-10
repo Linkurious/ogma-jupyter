@@ -97,48 +97,48 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| INST-01 | — | Pending |
-| INST-02 | — | Pending |
-| INST-03 | — | Pending |
-| INST-04 | — | Pending |
-| INST-05 | — | Pending |
-| INST-06 | — | Pending |
-| DATA-01 | — | Pending |
-| DATA-02 | — | Pending |
-| DATA-03 | — | Pending |
-| DATA-04 | — | Pending |
-| DATA-05 | — | Pending |
-| VIZ-01 | — | Pending |
-| VIZ-02 | — | Pending |
-| VIZ-03 | — | Pending |
-| VIZ-04 | — | Pending |
-| VIZ-05 | — | Pending |
-| VIZ-06 | — | Pending |
-| INT-01 | — | Pending |
-| INT-02 | — | Pending |
-| INT-03 | — | Pending |
-| INT-04 | — | Pending |
-| INT-05 | — | Pending |
-| INT-06 | — | Pending |
-| INT-07 | — | Pending |
-| ANN-01 | — | Pending |
-| ANN-02 | — | Pending |
-| ANN-03 | — | Pending |
-| ANN-04 | — | Pending |
-| ANN-05 | — | Pending |
-| GRP-01 | — | Pending |
-| GRP-02 | — | Pending |
-| GRP-03 | — | Pending |
-| GRP-04 | — | Pending |
-| API-01 | — | Pending |
-| API-02 | — | Pending |
-| API-03 | — | Pending |
+| INST-01 | Phase 1 | Pending |
+| INST-02 | Phase 1 | Pending |
+| INST-03 | Phase 1 | Pending |
+| INST-04 | Phase 1 | Pending |
+| INST-05 | Phase 1 | Pending |
+| INST-06 | Phase 1 | Pending |
+| VIZ-01 | Phase 1 | Pending |
+| VIZ-02 | Phase 1 | Pending |
+| API-01 | Phase 1 | Pending |
+| API-02 | Phase 1 | Pending |
+| DATA-01 | Phase 2 | Pending |
+| DATA-02 | Phase 2 | Pending |
+| DATA-03 | Phase 2 | Pending |
+| DATA-04 | Phase 2 | Pending |
+| DATA-05 | Phase 2 | Pending |
+| VIZ-03 | Phase 2 | Pending |
+| VIZ-04 | Phase 2 | Pending |
+| VIZ-05 | Phase 2 | Pending |
+| VIZ-06 | Phase 2 | Pending |
+| INT-01 | Phase 3 | Pending |
+| INT-02 | Phase 3 | Pending |
+| INT-03 | Phase 3 | Pending |
+| INT-04 | Phase 3 | Pending |
+| INT-05 | Phase 3 | Pending |
+| INT-06 | Phase 3 | Pending |
+| INT-07 | Phase 3 | Pending |
+| API-03 | Phase 3 | Pending |
+| ANN-01 | Phase 4 | Pending |
+| ANN-02 | Phase 4 | Pending |
+| ANN-03 | Phase 4 | Pending |
+| ANN-04 | Phase 4 | Pending |
+| ANN-05 | Phase 4 | Pending |
+| GRP-01 | Phase 4 | Pending |
+| GRP-02 | Phase 4 | Pending |
+| GRP-03 | Phase 4 | Pending |
+| GRP-04 | Phase 4 | Pending |
 
 **Coverage:**
-- v1 requirements: 35 total
-- Mapped to phases: 0
-- Unmapped: 35 ⚠️
+- v1 requirements: 36 total
+- Mapped to phases: 36
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-02-10*
-*Last updated: 2026-02-10 after initial definition*
+*Last updated: 2026-02-10 after roadmap creation*
