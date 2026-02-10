@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild --bundle --format=esm --outdir=src/ogma_jupyter/static js/src/index.ts",
+    "build": "esbuild --bundle --format=esm --outfile=src/ogma_jupyter/static/widget.js --external:@linkurious/ogma js/src/index.ts",
     "dev": "esbuild --bundle --format=esm --outdir=src/ogma_jupyter/static js/src/index.ts --watch"
   },
   "devDependencies": {
