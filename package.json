@@ -1,0 +1,29 @@
+{
+  "name": "ogma-jupyter",
+  "version": "0.1.0",
+  "description": "Interactive Ogma graph visualization for Jupyter notebooks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild --bundle --format=esm --outdir=src/ogma_jupyter/static js/src/index.ts",
+    "dev": "esbuild --bundle --format=esm --outdir=src/ogma_jupyter/static js/src/index.ts --watch"
+  },
+  "devDependencies": {
+    "@anywidget/types": "^0.2.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Linkurious/ogma-jupyter.git"
+  },
+  "keywords": [
+    "jupyter",
+    "jupyterlab",
+    "ogma",
+    "graph",
+    "visualization",
+    "anywidget"
+  ],
+  "license": "MIT"
+}
