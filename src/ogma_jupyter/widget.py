@@ -11,8 +11,6 @@ from typing import Any, Dict, List, Optional, TypedDict
 import anywidget
 import traitlets
 
-from .config import get_license_key
-
 
 class NodeData(TypedDict, total=False):
     """Type definition for node data in graph."""
@@ -138,8 +136,9 @@ class OgmaWidget(anywidget.AnyWidget):
         """
         super().__init__(**kwargs)
 
-        # Resolve license key (may raise OgmaLicenseError)
-        self._license_key = get_license_key(license_key)
+        # Store license key if provided (for future use)
+        if license_key:
+            self._license_key = license_key
 
         # Set initial graph data if provided
         if graph_data is not None:

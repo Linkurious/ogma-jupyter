@@ -21,7 +21,11 @@ def get_license_key(provided_key: Optional[str] = None) -> str:
     Resolves the license key using the following priority:
     1. Explicitly provided key (constructor argument)
     2. OGMA_LICENSE_KEY environment variable
-    3. Raise informative error with setup instructions
+    3. Return empty string (widget will show placeholder if Ogma not installed)
+
+    The license key is only required for downloading @linkurious/ogma from
+    the private npm registry. At runtime, if Ogma is not installed, the
+    widget displays a helpful placeholder with setup instructions.
 
     Parameters
     ----------
@@ -32,14 +36,7 @@ def get_license_key(provided_key: Optional[str] = None) -> str:
     Returns
     -------
     str
-        The resolved Ogma license key.
-
-    Raises
-    ------
-    OgmaLicenseError
-        If no license key is found. The error message includes
-        instructions for both environment variable and constructor
-        approaches.
+        The resolved Ogma license key, or empty string if not configured.
 
     Examples
     --------
@@ -51,9 +48,10 @@ def get_license_key(provided_key: Optional[str] = None) -> str:
     >>> # With explicit key
     >>> key = get_license_key('your-key')
 
-    >>> # Without any key (raises error)
-    >>> key = get_license_key()  # doctest: +SKIP
-    OgmaLicenseError: No Ogma license key found...
+    >>> # Without any key (returns empty string)
+    >>> key = get_license_key()
+    >>> key
+    ''
     """
     if provided_key:
         return provided_key
@@ -62,17 +60,8 @@ def get_license_key(provided_key: Optional[str] = None) -> str:
     if env_key:
         return env_key
 
-    raise OgmaLicenseError(
-        "No Ogma license key found.\n\n"
-        "Set the OGMA_LICENSE_KEY environment variable:\n"
-        "    export OGMA_LICENSE_KEY='your-key-here'\n\n"
-        "Or in Python before importing:\n"
-        "    import os\n"
-        "    os.environ['OGMA_LICENSE_KEY'] = 'your-key-here'\n\n"
-        "Or pass it directly to the widget:\n"
-        "    widget = OgmaWidget(license_key='your-key-here')\n\n"
-        "Get your license key from: https://get.linkurio.us"
-    )
+    # No license key - widget will show placeholder if Ogma not installed
+    return ""
 
 
 def _maybe_show_welcome() -> None:
