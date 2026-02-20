@@ -13,14 +13,23 @@ function render({ model, el }: RenderContext) {
   });
 
   // Load initial graph data if present
-  const loadGraph = () => {
+  const loadGraph = async () => {
     const data: GraphData = model.get("graph_data");
     if (data.nodes.length > 0) {
-      ogma.setGraph({
+      await ogma.setGraph({
         nodes: data.nodes.map(
-          (n: { id: string; data?: Record<string, any> }) => ({
+          (n: {
+            id: string;
+            x?: number;
+            y?: number;
+            data?: Record<string, any>;
+          }) => ({
             id: n.id,
             data: n.data,
+            attributes: {
+              x: n.x,
+              y: n.y,
+            },
           }),
         ),
         edges: data.edges.map(
@@ -36,7 +45,7 @@ function render({ model, el }: RenderContext) {
         ),
       });
       // Center view on graph
-      ogma.view.locateGraph();
+      await ogma.view.locateGraph();
     }
   };
 

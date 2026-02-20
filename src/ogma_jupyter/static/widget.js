@@ -25125,14 +25125,18 @@ function render({ model, el }) {
   const ogma = new ogma_default({
     container: el
   });
-  const loadGraph = () => {
+  const loadGraph = async () => {
     const data = model.get("graph_data");
     if (data.nodes.length > 0) {
-      ogma.setGraph({
+      await ogma.setGraph({
         nodes: data.nodes.map(
           (n) => ({
             id: n.id,
-            data: n.data
+            data: n.data,
+            attributes: {
+              x: n.x,
+              y: n.y
+            }
           })
         ),
         edges: data.edges.map(
@@ -25143,7 +25147,7 @@ function render({ model, el }) {
           })
         )
       });
-      ogma.view.locateGraph();
+      await ogma.view.locateGraph();
     }
   };
   loadGraph();

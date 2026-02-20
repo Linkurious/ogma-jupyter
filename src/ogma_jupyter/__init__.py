@@ -143,9 +143,9 @@ def demo() -> OgmaWidget:
     return OgmaWidget(
         graph_data={
             "nodes": [
-                {"id": "a", "data": {"label": "Node A"}},
-                {"id": "b", "data": {"label": "Node B"}},
-                {"id": "c", "data": {"label": "Node C"}},
+                {"id": "a", "x": 0, "y": -60, "data": {"label": "Node A"}},
+                {"id": "b", "x": -70, "y": 40, "data": {"label": "Node B"}},
+                {"id": "c", "x": 70, "y": 40, "data": {"label": "Node C"}},
             ],
             "edges": [
                 {"id": "e1", "source": "a", "target": "b"},
