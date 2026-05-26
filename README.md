@@ -2,9 +2,11 @@
 
 [![PyPI version](https://badge.fury.io/py/ogma-jupyter.svg)](https://badge.fury.io/py/ogma-jupyter)
 [![Python versions](https://img.shields.io/pypi/pyversions/ogma-jupyter.svg)](https://pypi.org/project/ogma-jupyter/)
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Interactive Ogma graph visualization for Jupyter notebooks.
+Interactive [Ogma](https://doc.linkurio.us/ogma/latest/) graph visualization for Jupyter notebooks.
+Built with [anywidget](https://anywidget.dev/).
+
+> **Status:** MVP — Python API and test suite complete. JavaScript widget integration in progress.
 
 ## Installation
 
@@ -12,119 +14,192 @@ Interactive Ogma graph visualization for Jupyter notebooks.
 pip install ogma-jupyter
 ```
 
-## Ogma License Configuration
+Ogma is a commercial library from [Linkurious](https://linkurio.us). You need a license key to use the visualization. Contact [Linkurious](https://linkurio.us/contact/) to obtain one.
 
-Ogma is a commercial graph visualization library from Linkurious. To use the full visualization capabilities, you need:
-
-1. An Ogma license key
-2. Access to the Linkurious npm registry (for development builds)
-
-### Setting the License Key
-
-Set the `OGMA_LICENSE_KEY` environment variable:
-
-```bash
-export OGMA_LICENSE_KEY="your-license-key-here"
-```
-
-Or pass it directly to the widget:
-
-```python
-widget = og.OgmaWidget(license_key="your-license-key-here")
-```
-
-### Configuring npm Registry for Development
-
-If you're building from source and need access to the `@linkurious/ogma` package, create a `.npmrc` file in the project root:
-
-```npmrc
-@linkurious:registry=https://npm.linkurio.us/
-//npm.linkurio.us/:_authToken=YOUR_LINKURIOUS_AUTH_TOKEN
-```
-
-Contact Linkurious or visit the [Linkurious customer portal](https://get.linkurio.us) to obtain:
-- Your Ogma license key
-- Your npm registry authentication token
-
-### Development Without Ogma
-
-The widget includes a graceful fallback when Ogma is not available. You can develop and test the Python package infrastructure without having Ogma configured - the widget will display a placeholder indicating that Ogma needs to be configured.
-
-## Quick Start
+## Quick start
 
 ```python
 import ogma_jupyter as og
 
-# Create a simple graph widget
-widget = og.OgmaWidget()
-widget.graph_data = {
-    'nodes': [{'id': 'a'}, {'id': 'b'}, {'id': 'c'}],
-    'edges': [
-        {'source': 'a', 'target': 'b'},
-        {'source': 'b', 'target': 'c'},
-        {'source': 'c', 'target': 'a'}
-    ]
-}
-widget
+# Set your license key once per session (or use the OGMA_LICENSE_KEY env var)
+og.set_license("your-license-key")
 
-# Or use the demo function
+# Display a demo graph
 og.demo()
 ```
 
-## Examples
-
-Bundled example notebooks are included in the package:
-
-- **[01-quickstart.ipynb](examples/01-quickstart.ipynb)** - Quick introduction to ogma-jupyter
-- **[02-basic-graph.ipynb](examples/02-basic-graph.ipynb)** - Creating graphs with node/edge attributes
-
-To find the examples directory in your installation:
-
 ```python
-import ogma_jupyter as og
-print(og.get_example_path())
+# Build a graph from your own data
+widget = og.OgmaWidget(
+    graph_data={
+        "nodes": [
+            {"id": "alice", "data": {"name": "Alice", "role": "engineer"}},
+            {"id": "bob",   "data": {"name": "Bob",   "role": "manager"}},
+        ],
+        "edges": [
+            {"source": "alice", "target": "bob", "data": {"label": "reports to"}},
+        ],
+    }
+)
+widget
 ```
 
-You can copy the examples to your workspace to experiment with them.
+### License key resolution order
 
-## Supported Platforms
+1. `license_key=` argument on `OgmaWidget(...)`
+2. `og.set_license("key")` called earlier in the notebook
+3. `OGMA_LICENSE_KEY` environment variable
 
-ogma-jupyter works in:
+## Graph data format
 
-- **JupyterLab** - Full support
-- **VSCode notebooks** - Full support
-- **Google Colab** - Full support
-- **Databricks notebooks** - Supported (requires Ogma license)
-- **Classic Jupyter Notebook** - Full support
+`graph_data` follows Ogma's `RawGraph` schema:
+
+```python
+{
+    "nodes": [
+        {
+            "id": "n1",                        # optional, auto-assigned if omitted
+            "attributes": {"x": 0, "y": -60},  # visual attributes (position, color, …)
+            "data": {"name": "Alice"},          # your domain data
+        }
+    ],
+    "edges": [
+        {
+            "source": "n1",   # required
+            "target": "n2",   # required
+            "data": {"weight": 1.5},
+        }
+    ],
+}
+```
+
+## Layouts
+
+Run a layout algorithm to arrange nodes automatically:
+
+```python
+widget.run_layout("force")
+widget.run_layout("hierarchical", direction="LR")
+widget.run_layout("radial", duration=500)
+```
+
+Available layouts: `concentric`, `force`, `forceatlas2`, `grid`, `hierarchical`, `radial`, `sequential`.
+
+## Style rules
+
+Use `ogma_jupyter.rules` helpers to bind visual properties to data fields.
+
+```python
+from ogma_jupyter import rules
+
+widget.add_style_rule(
+    node_attributes={
+        # categorical: map a field value to a color
+        "color": rules.map(
+            field="data.role",
+            values={"engineer": "#4e79a7", "manager": "#f28e2b"},
+            fallback="gray",
+        ),
+        # numerical: size nodes by a score (5 slices, radius 4–20)
+        "radius": rules.slices(
+            field="data.score",
+            values={"nbSlices": 5, "min": 4, "max": 20},
+        ),
+        # template: build a label from data properties
+        "text": {"content": rules.template("{{data.name}}")},
+    }
+)
+```
+
+### Rule helpers
+
+| Helper | Description | Mirrors |
+|---|---|---|
+| `rules.map(field, values, fallback=)` | Categorical data → output value | `ogma.rules.map()` |
+| `rules.slices(field, values, stops=, fallback=, reverse=)` | Numerical range → output value | `ogma.rules.slices()` |
+| `rules.template(template_str)` | `{{field}}` string interpolation | `ogma.rules.template()` |
+
+## Grouping
+
+Collapse nodes that share a data property into a single meta-node:
+
+```python
+widget.group_nodes(key="data.department")
+
+# Restore individual nodes
+widget.ungroup_nodes()
+```
+
+## API reference
+
+### `og.set_license(key, download=False)`
+
+Set the license key for the current session. Pass `download=True` to immediately fetch and cache the Ogma JS bundle.
+
+### `og.demo()`
+
+Render a small sample graph (no data needed).
+
+### `OgmaWidget(graph_data=None, license_key=None, **kwargs)`
+
+The core widget. All parameters are optional at construction time — you can set `widget.graph_data` at any point and the visualization updates live.
+
+| Attribute | Type | Description |
+|---|---|---|
+| `graph_data` | dict | `RawGraph` — nodes and edges |
+| `style_rules` | list | Accumulated style rule dicts |
+| `graph_layout` | dict | Last layout config, e.g. `{"name": "force"}` |
+
+| Method | Description |
+|---|---|
+| `add_style_rule(node_attributes=, edge_attributes=)` | Append a style rule |
+| `run_layout(name, **options)` | Run a layout algorithm |
+| `group_nodes(key)` | Group nodes by a data property path |
+| `ungroup_nodes()` | Remove all groupings |
+
+## Supported environments
+
+- JupyterLab
+- VS Code notebooks
+- Google Colab
+- Classic Jupyter Notebook
+- Databricks notebooks
 
 ## Development
 
 ### Setup
 
 ```bash
-# Clone the repository
 git clone https://github.com/Linkurious/ogma-jupyter.git
 cd ogma-jupyter
 
-# Create virtual environment
 python -m venv .venv
-source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+source .venv/bin/activate   # Windows: .venv\Scripts\activate
 
-# Install in editable mode with dev dependencies
 pip install -e ".[dev]"
 ```
 
-### Building JavaScript
+### Run tests
 
 ```bash
-# Install npm dependencies
+pytest
+```
+
+### Build JavaScript (Linkurious devs only)
+
+Access to the `@linkurious/ogma` npm package is required. Create `.npmrc` in the project root:
+
+```
+@linkurious:registry=https://npm.linkurio.us/
+//npm.linkurio.us/:_authToken=YOUR_TOKEN
+```
+
+Then:
+
+```bash
 npm install
-
-# Build the widget JavaScript
-npm run build
-
-# Watch mode for development
-npm run dev
+npm run build   # production bundle
+npm run dev     # watch mode
 ```
 
 ## License

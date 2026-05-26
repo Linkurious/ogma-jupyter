@@ -27,6 +27,6 @@
   ],
   "license": "MIT",
   "dependencies": {
-    "@linkurious/ogma": "^6.0.0-develop.76"
+    "@linkurious/ogma": "^6.0.0"
   }
 }
