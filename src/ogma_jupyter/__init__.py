@@ -1,6 +1,7 @@
 """Ogma Jupyter - Interactive graph visualization for Jupyter notebooks."""
 
 from pathlib import Path
+from typing import Optional
 
 from ._version import __version__
 from .errors import OgmaDataError, OgmaError, OgmaLicenseError, OgmaRenderError
@@ -14,7 +15,11 @@ _maybe_show_welcome()
 _license_key: str = ""
 
 
-def set_license(key: str, download: bool = False) -> None:
+def set_license(
+    key: str,
+    download: bool = False,
+    download_secret: Optional[str] = None,
+) -> None:
     """Set the Ogma license key for the current session.
 
     Call this once at the top of your notebook. All subsequent
@@ -23,10 +28,16 @@ def set_license(key: str, download: bool = False) -> None:
     Parameters
     ----------
     key : str
-        Your Ogma license key.
+        Your Ogma runtime license key (passed to ``new Ogma({license})`` in the
+        browser).
     download : bool, optional
         If True, immediately download and cache the Ogma JS bundle.
         Defaults to False (download happens lazily on first widget render).
+    download_secret : str, optional
+        Secret used to authenticate the Ogma package download — distinct from the
+        runtime license ``key``. Resolved in this order: this argument, the
+        ``OGMA_DOWNLOAD_SECRET`` environment variable, then ``key`` itself as a
+        fallback.
 
     Examples
     --------
@@ -40,14 +51,14 @@ def set_license(key: str, download: bool = False) -> None:
     # Sync to config module so OgmaWidget.__init__ can access it
     from . import config as _config
     _config._license_key = key
+    if download_secret is not None:
+        _config._download_secret = download_secret
 
-    if download and key:
-        from .downloader import download_ogma, assemble_widget_js
-        cache_path = download_ogma(key)
-        core_path = Path(__file__).parent / "static" / "widget_core.js"
-        output_path = Path(__file__).parent / "static" / "widget.js"
-        if core_path.exists():
-            assemble_widget_js(ogma_path=cache_path, core_path=core_path, output_path=output_path)
+    if download:
+        secret = _config.get_download_secret(download_secret)
+        if secret:
+            from .downloader import ensure_bundle
+            ensure_bundle(secret)
 
 
 def get_example_path() -> Path:

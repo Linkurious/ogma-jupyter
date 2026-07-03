@@ -45,11 +45,15 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ogma_jupyter"]
+# The Ogma-bundled widget.js is a runtime-assembled artifact and must never be
+# distributed (it contains the commercial @linkurious/ogma library). Only the
+# Ogma-free widget_core.js is shipped.
+exclude = ["src/ogma_jupyter/static/widget.js"]
 
 [tool.hatch.build.hooks.jupyter-builder]
 dependencies = ["hatch-jupyter-builder"]
 build-function = "hatch_jupyter_builder.npm_builder"
-ensured-targets = ["src/ogma_jupyter/static/widget.js"]
+ensured-targets = ["src/ogma_jupyter/static/widget_core.js"]
 
 [tool.hatch.build.hooks.jupyter-builder.build-kwargs]
 npm = "npm"

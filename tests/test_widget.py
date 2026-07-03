@@ -126,6 +126,60 @@ class TestGraphDataValidation:
 
 
 # ---------------------------------------------------------------------------
+# graph_data coordinate normalization
+# ---------------------------------------------------------------------------
+
+class TestGraphDataNormalization:
+    def test_lifts_root_level_xy_into_attributes(self):
+        with pytest.warns(UserWarning, match="attributes"):
+            w = OgmaWidget(
+                graph_data={"nodes": [{"id": "a", "x": 10, "y": 20}], "edges": []}
+            )
+        node = w.graph_data["nodes"][0]
+        assert node["attributes"] == {"x": 10, "y": 20}
+        assert "x" not in node
+        assert "y" not in node
+
+    def test_merges_with_existing_attributes(self):
+        with pytest.warns(UserWarning):
+            w = OgmaWidget(
+                graph_data={
+                    "nodes": [
+                        {"id": "a", "x": 10, "attributes": {"color": "red"}}
+                    ],
+                    "edges": [],
+                }
+            )
+        node = w.graph_data["nodes"][0]
+        assert node["attributes"] == {"color": "red", "x": 10}
+
+    def test_existing_attribute_coordinates_take_precedence(self):
+        with pytest.warns(UserWarning):
+            w = OgmaWidget(
+                graph_data={
+                    "nodes": [
+                        {"id": "a", "x": 10, "attributes": {"x": 99}}
+                    ],
+                    "edges": [],
+                }
+            )
+        node = w.graph_data["nodes"][0]
+        assert node["attributes"]["x"] == 99
+        assert "x" not in node
+
+    def test_no_warning_when_coordinates_already_nested(self, recwarn):
+        w = OgmaWidget(
+            graph_data={
+                "nodes": [{"id": "a", "attributes": {"x": 0, "y": 0}}],
+                "edges": [],
+            }
+        )
+        assert w.graph_data["nodes"][0]["attributes"] == {"x": 0, "y": 0}
+        assert len(recwarn) == 0
+
+
+
+# ---------------------------------------------------------------------------
 # demo() function
 # ---------------------------------------------------------------------------
 

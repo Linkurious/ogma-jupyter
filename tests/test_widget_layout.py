@@ -48,6 +48,38 @@ class TestRunLayout:
             w.run_layout("force", duration=300, steps=100)
         assert msgs[0]["options"] == {"duration": 300, "steps": 100}
 
+    def test_run_layout_converts_snake_case_to_camel_case(self):
+        w = OgmaWidget(graph_data=SAMPLE_GRAPH)
+        with capture_messages(w) as msgs:
+            w.run_layout("force", edge_length=40, node_mass=2)
+        assert msgs[0]["options"] == {"edgeLength": 40, "nodeMass": 2}
+
+    def test_run_layout_accepts_camel_case_unchanged(self):
+        w = OgmaWidget(graph_data=SAMPLE_GRAPH)
+        with capture_messages(w) as msgs:
+            w.run_layout("force", edgeLength=40)
+        assert msgs[0]["options"] == {"edgeLength": 40}
+
+    def test_run_layout_warns_on_unknown_option_but_forwards_it(self):
+        w = OgmaWidget(graph_data=SAMPLE_GRAPH)
+        with pytest.warns(UserWarning, match="Unknown option"):
+            with capture_messages(w) as msgs:
+                w.run_layout("force", not_a_real_option=1)
+        assert msgs[0]["options"] == {"notARealOption": 1}
+
+    def test_run_layout_no_warning_for_known_option(self, recwarn):
+        w = OgmaWidget(graph_data=SAMPLE_GRAPH)
+        with capture_messages(w):
+            w.run_layout("hierarchical", direction="LR", node_distance=50)
+        assert len(recwarn) == 0
+
+    def test_forceatlas2_shares_forcelink_options(self, recwarn):
+        w = OgmaWidget(graph_data=SAMPLE_GRAPH)
+        with capture_messages(w) as msgs:
+            w.run_layout("forceatlas2", scaling_ratio=2)
+        assert msgs[0]["options"] == {"scalingRatio": 2}
+        assert len(recwarn) == 0
+
     def test_run_hierarchical_with_direction(self):
         w = OgmaWidget(graph_data=SAMPLE_GRAPH)
         with capture_messages(w) as msgs:

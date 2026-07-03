@@ -6,7 +6,7 @@
 Interactive [Ogma](https://doc.linkurio.us/ogma/latest/) graph visualization for Jupyter notebooks.
 Built with [anywidget](https://anywidget.dev/).
 
-> **Status:** MVP — Python API and test suite complete. JavaScript widget integration in progress.
+> **Status:** MVP complete — Python API, JavaScript widget, and test suite are all in place.
 
 ## Installation
 
@@ -83,7 +83,7 @@ widget.run_layout("hierarchical", direction="LR")
 widget.run_layout("radial", duration=500)
 ```
 
-Available layouts: `concentric`, `force`, `forceatlas2`, `grid`, `hierarchical`, `radial`, `sequential`.
+Available layouts: `concentric`, `force`, `forcelink`, `grid`, `hierarchical`, `radial`, `sequential` (`forceatlas2` is accepted as an alias for `forcelink`).
 
 ## Style rules
 
@@ -132,9 +132,17 @@ widget.ungroup_nodes()
 
 ## API reference
 
-### `og.set_license(key, download=False)`
+### `og.set_license(key, download=False, download_secret=None)`
 
-Set the license key for the current session. Pass `download=True` to immediately fetch and cache the Ogma JS bundle.
+Set the runtime license key for the current session. Pass `download=True` to
+immediately fetch and cache the Ogma JS bundle. The **download secret** (which
+authenticates the package download, distinct from the runtime license) is
+resolved from `download_secret=`, then the `OGMA_DOWNLOAD_SECRET` environment
+variable, then the license key.
+
+The Ogma bundle is otherwise downloaded lazily on first widget render, using a
+dedicated download secret (`download_secret=` or `OGMA_DOWNLOAD_SECRET`). A bare
+runtime license key alone does not trigger a network download on render.
 
 ### `og.demo()`
 
@@ -198,9 +206,19 @@ Then:
 
 ```bash
 npm install
-npm run build   # production bundle
+npm run build   # builds the Ogma-free widget_core.js
 npm run dev     # watch mode
 ```
+
+> **Distribution note:** the build produces `widget_core.js`, which does **not**
+> contain `@linkurious/ogma`. The commercial Ogma library is never committed or
+> shipped in the package — it is downloaded at runtime (license-gated) via
+> `og.set_license(key, download=True)` and assembled with the core into a cached
+> bundle. The Ogma-embedded `widget.js` is git-ignored and excluded from the wheel.
+>
+> **Local development:** when working from a source checkout, the widget uses the
+> `@linkurious/ogma` dev dependency in `node_modules` directly, so the examples and
+> tests render offline without a download secret or any network access.
 
 ## License
 
