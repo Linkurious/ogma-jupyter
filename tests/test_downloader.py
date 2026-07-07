@@ -169,7 +169,7 @@ class TestLocalOgmaFallback:
         # local UMD build should be discoverable from a source checkout.
         local = get_local_ogma_path()
         assert local is not None
-        assert local.name == "ogma.umd.js"
+        assert local.name in ("ogma.umd.cjs", "ogma.umd.js")
         assert local.exists()
 
     def test_local_ogma_path_none_when_missing(self, tmp_path, monkeypatch):

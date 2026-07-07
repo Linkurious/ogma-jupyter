@@ -71,8 +71,16 @@ def get_local_ogma_path() -> Optional[Path]:
     # This file lives at <repo>/src/ogma_jupyter/downloader.py, so parents[2] is
     # the repository root in an editable/source checkout.
     repo_root = Path(__file__).resolve().parents[2]
-    candidate = repo_root / "node_modules" / "@linkurious" / "ogma" / "ogma.umd.js"
-    return candidate if candidate.exists() else None
+    ogma_dir = repo_root / "node_modules" / "@linkurious" / "ogma"
+    # Ogma renamed its UMD build from ``ogma.umd.js`` to ``ogma.umd.cjs`` (the
+    # package's ``browser`` entry point) in newer releases; ``ogma.js`` is the
+    # ESM build and is not compatible with the UMD-shadowing assembler. Try the
+    # UMD candidates in order so both old and new Ogma versions work.
+    for filename in ("ogma.umd.cjs", "ogma.umd.js"):
+        candidate = ogma_dir / filename
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def build_bundle_source(ogma_js_path: Path) -> str:
