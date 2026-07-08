@@ -9,6 +9,7 @@
     "dev": "esbuild --bundle --format=esm --external:@linkurious/ogma --outfile=src/ogma_jupyter/static/widget_core.js js/src/index.ts --watch",
     "test:install": "python3 -m venv .venv && .venv/bin/python -m pip install --upgrade pip && .venv/bin/pip install -e \".[dev]\"",
     "test:run": ".venv/bin/python -m pytest",
+    "test:unit": "npm run test:install && npm run test:run",
     "test": "npm run test:install && npm run test:run",
     "lint": ".venv/bin/python -m ruff check ."
   },
