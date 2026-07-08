@@ -8,7 +8,7 @@
     "build": "esbuild --bundle --format=esm --external:@linkurious/ogma --outfile=src/ogma_jupyter/static/widget_core.js js/src/index.ts",
     "dev": "esbuild --bundle --format=esm --external:@linkurious/ogma --outfile=src/ogma_jupyter/static/widget_core.js js/src/index.ts --watch",
     "test:install": "sh scripts/setup-python.sh",
-    "test:run": ".venv/bin/python -m pytest",
+    "test:run": ".venv/bin/python -m pytest --junitxml=reports/pytest/junit-test-results.xml",
     "test:unit": "npm run test:install && npm run test:run",
     "test": "npm run test:install && npm run test:run",
     "lint": ".venv/bin/python -m ruff check ."

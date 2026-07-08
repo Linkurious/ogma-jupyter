@@ -59,6 +59,9 @@ Thumbs.db
 venv/
 ENV/
 
+# Test reports
+reports/
+
 # Distribution
 *.tar.gz
 *.whl
