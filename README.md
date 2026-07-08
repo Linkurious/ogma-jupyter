@@ -6,6 +6,10 @@
 Interactive [Ogma](https://doc.linkurio.us/ogma/latest/) graph visualization for Jupyter notebooks.
 Built with [anywidget](https://anywidget.dev/).
 
+![ogma-jupyter demo](docs/assets/ogma-jupyter-demo.gif)
+
+<sub>Illustrative preview. See [`examples/`](examples/) for runnable notebooks.</sub>
+
 > **Status:** MVP complete — Python API, JavaScript widget, and test suite are all in place.
 
 ## Installation
@@ -14,7 +18,19 @@ Built with [anywidget](https://anywidget.dev/).
 pip install ogma-jupyter
 ```
 
-Ogma is a commercial library from [Linkurious](https://linkurio.us). You need a license key to use the visualization. Contact [Linkurious](https://linkurio.us/contact/) to obtain one.
+Ogma is a commercial library from [Linkurious](https://linkurio.us). Contact
+[Linkurious](https://linkurio.us/contact/) to obtain credentials. Two values are
+involved (a bare license key alone never triggers a network download):
+
+| Credential | Env var | Purpose |
+|---|---|---|
+| **License key** | `OGMA_LICENSE_KEY` | Unlocks the rendered graph at runtime |
+| **Download secret** | `OGMA_DOWNLOAD_SECRET` | Authenticates the one-time Ogma bundle download (cached afterwards) |
+
+```bash
+export OGMA_LICENSE_KEY=your-license-key
+export OGMA_DOWNLOAD_SECRET=your-download-secret   # from https://get.linkurio.us/
+```
 
 ## Quick start
 
