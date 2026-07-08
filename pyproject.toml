@@ -3,7 +3,7 @@ name = "ogma-jupyter"
 version = "0.1.0"
 description = "Interactive Ogma graph visualization for Jupyter notebooks"
 readme = "README.md"
-license = "MIT"
+license = "Apache-2.0"
 authors = [
     { name = "Linkurious", email = "support@linkurious.com" }
 ]
@@ -14,7 +14,7 @@ classifiers = [
     "Framework :: Jupyter :: JupyterLab :: 4",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
