@@ -10,4 +10,5 @@ nodeJob {
   githubRelease = true
   runBookeeping = true
   runNpmPublish = false
+  runPrivateNpmPublish = false
 }
