@@ -9,6 +9,7 @@
     "dev": "esbuild --bundle --format=esm --external:@linkurious/ogma --outfile=src/ogma_jupyter/static/widget_core.js js/src/index.ts --watch",
     "test:install": "python3 -m venv .venv && .venv/bin/python -m pip install --upgrade pip && .venv/bin/pip install -e \".[dev]\"",
     "test:run": ".venv/bin/python -m pytest",
+    "test:probe": "python3 - <<'PY'\nimport shutil, subprocess, sys, sysconfig, os\ndef run(*a):\n    try:\n        return subprocess.run(a, capture_output=True, text=True).stdout.strip() or subprocess.run(a, capture_output=True, text=True).stderr.strip()\n    except Exception as e:\n        return f'ERR {e}'\nprint('python3      :', sys.executable, sys.version.split()[0])\nprint('which python3:', shutil.which('python3'))\nprint('pip          :', run(sys.executable,'-m','pip','--version'))\nprint('ensurepip    :', run(sys.executable,'-m','ensurepip','--version'))\nprint('venv import  :', run(sys.executable,'-c','import venv;print(\"ok\")'))\nprint('virtualenv   :', run(sys.executable,'-m','virtualenv','--version'))\nprint('pipx         :', shutil.which('pipx') or 'missing')\nmarker=os.path.join(sysconfig.get_path('stdlib'),'EXTERNALLY-MANAGED')\nprint('PEP668 marker:', marker if os.path.exists(marker) else 'absent')\nPY",
     "test:unit": "npm run test:install && npm run test:run",
     "test": "npm run test:install && npm run test:run",
     "lint": ".venv/bin/python -m ruff check ."
