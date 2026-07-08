@@ -1,0 +1,67 @@
+# Compiled JavaScript assets (built from TypeScript)
+# widget_core.js (Ogma-free) IS tracked. widget.js is the runtime-assembled
+# bundle that embeds the commercial @linkurious/ogma library and must never be
+# committed or distributed.
+src/ogma_jupyter/static/widget.js
+src/ogma_jupyter/static/*.map
+src/ogma_jupyter/static/*.LICENSE.txt
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment
+.env
+.venv/
+venv/
+ENV/
+
+# Test reports
+reports/
+
+# Distribution
+*.tar.gz
+*.whl

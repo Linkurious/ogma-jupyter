@@ -1,0 +1,38 @@
+{
+  "name": "ogma-jupyter",
+  "version": "0.1.0",
+  "description": "Interactive Ogma graph visualization for Jupyter notebooks",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild --bundle --format=esm --external:@linkurious/ogma --outfile=src/ogma_jupyter/static/widget_core.js js/src/index.ts",
+    "dev": "esbuild --bundle --format=esm --external:@linkurious/ogma --outfile=src/ogma_jupyter/static/widget_core.js js/src/index.ts --watch",
+    "test:install": "sh scripts/setup-python.sh",
+    "test:run": ".venv/bin/python -m pytest --junitxml=reports/pytest/junit-test-results.xml",
+    "test:unit": "npm run test:install && npm run test:run",
+    "test": "npm run test:install && npm run test:run",
+    "lint": ".venv/bin/python -m ruff check ."
+  },
+  "devDependencies": {
+    "@anywidget/types": "^0.2.0",
+    "@linkurious/code-tools": "^0.2.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.4.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Linkurious/ogma-jupyter.git"
+  },
+  "keywords": [
+    "jupyter",
+    "jupyterlab",
+    "ogma",
+    "graph",
+    "visualization",
+    "anywidget"
+  ],
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@linkurious/ogma": "^6.0.0"
+  }
+}
