@@ -241,7 +241,7 @@ var render = ({ model, el }) => {
     ogma.destroy();
   };
 };
-var index_default = { render };
+var src_default = { render };
 export {
-  index_default as default
+  src_default as default
 };
