@@ -242,14 +242,24 @@ pytest
 
 ### Build JavaScript (Linkurious devs only)
 
-Access to the `@linkurious/ogma` npm package is required. Create `.npmrc` in the project root:
+Access to the `@linkurious/ogma` npm package is required. The project already
+declares it as a plain semver dependency — all you need is to set the
+`OGMA_DOWNLOAD_KEY` environment variable so npm can authenticate against the
+private registry (the `.npmrc` in the project root already points to it).
 
-```
-@linkurious:registry=https://npm.linkurio.us/
-//npm.linkurio.us/:_authToken=YOUR_TOKEN
-```
+**Derive your `OGMA_DOWNLOAD_KEY`:**
 
-Then:
+1. Log in to [get.linkurio.us](https://get.linkurio.us) and copy the npm install
+   link for Ogma. It looks like:
+   ```
+   https://get.linkurio.us/api/get/npm/ogma/<VERSION>/?secret=lk-dls-xxxx…
+   ```
+2. Take the value after `?secret=` and base64-encode it with the prefix `any:`:
+   ```bash
+   export OGMA_DOWNLOAD_KEY=$(printf '%s' 'any:lk-dls-xxxx…' | base64)
+   ```
+
+Then install and build:
 
 ```bash
 npm install
