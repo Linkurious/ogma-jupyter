@@ -254,9 +254,10 @@ private registry (the `.npmrc` in the project root already points to it).
    ```
    https://get.linkurio.us/api/get/npm/ogma/<VERSION>/?secret=lk-dls-xxxx…
    ```
-2. Take the value after `?secret=` and base64-encode it with the prefix `any:`:
+2. Take the value after `?secret=` and base64-encode it together with your
+   get.linkurio.us email (format: `email:secret`):
    ```bash
-   export OGMA_DOWNLOAD_KEY=$(printf '%s' 'any:lk-dls-xxxx…' | base64)
+   export OGMA_DOWNLOAD_KEY=$(printf '%s' 'your@email.com:lk-dls-xxxx…' | base64)
    ```
 
 Then install and build:
