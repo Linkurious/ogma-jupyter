@@ -14,7 +14,7 @@ Built with [anywidget](https://anywidget.dev/).
 Requires **Python 3.9, 3.10, 3.11, or 3.12**.
 
 ```bash
-pip install ogma-jupyter
+pip install "git+https://github.com/Linkurious/ogma-jupyter.git"
 ```
 
 Ogma is a commercial library from [Linkurious](https://linkurio.us). You need a
