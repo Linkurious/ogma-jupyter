@@ -184,8 +184,8 @@ class TestLocalOgmaFallback:
         # A user-configured Ogma file should be used ahead of node_modules.
         ogma_file = tmp_path / "ogma.umd.cjs"
         ogma_file.write_text("OGMA_UMD")
-        monkeypatch.setattr("ogma_jupyter.config._ogma_path", str(ogma_file))
-        monkeypatch.delenv("OGMA_JS_PATH", raising=False)
+        monkeypatch.setattr("ogma_jupyter.config._library_path", str(ogma_file))
+        monkeypatch.delenv("OGMA_LOCAL_PATH", raising=False)
         assert get_local_ogma_path() == ogma_file
 
     def test_configured_directory_path_resolves_umd_build(self, tmp_path, monkeypatch):
@@ -193,23 +193,23 @@ class TestLocalOgmaFallback:
         ogma_dir.mkdir()
         umd = ogma_dir / "ogma.umd.cjs"
         umd.write_text("OGMA_UMD")
-        monkeypatch.setattr("ogma_jupyter.config._ogma_path", str(ogma_dir))
-        monkeypatch.delenv("OGMA_JS_PATH", raising=False)
+        monkeypatch.setattr("ogma_jupyter.config._library_path", str(ogma_dir))
+        monkeypatch.delenv("OGMA_LOCAL_PATH", raising=False)
         assert get_local_ogma_path() == umd
 
     def test_configured_path_via_env_var(self, tmp_path, monkeypatch):
         ogma_file = tmp_path / "ogma.umd.js"
         ogma_file.write_text("OGMA_UMD")
-        monkeypatch.setattr("ogma_jupyter.config._ogma_path", "")
-        monkeypatch.setenv("OGMA_JS_PATH", str(ogma_file))
+        monkeypatch.setattr("ogma_jupyter.config._library_path", "")
+        monkeypatch.setenv("OGMA_LOCAL_PATH", str(ogma_file))
         assert get_local_ogma_path() == ogma_file
 
     def test_missing_configured_path_warns_and_falls_back(self, tmp_path, monkeypatch):
         # An invalid configured path warns and falls back to node_modules.
         monkeypatch.setattr(
-            "ogma_jupyter.config._ogma_path", str(tmp_path / "nope.cjs")
+            "ogma_jupyter.config._library_path", str(tmp_path / "nope.cjs")
         )
-        monkeypatch.delenv("OGMA_JS_PATH", raising=False)
+        monkeypatch.delenv("OGMA_LOCAL_PATH", raising=False)
         with pytest.warns(UserWarning, match="does not point to an Ogma UMD"):
             result = get_local_ogma_path()
         # Falls back to the repo-local node_modules build (present in this repo).
@@ -404,31 +404,31 @@ class TestLicenseKeyResolution:
 # Local Ogma path resolution (offline mode)
 # ---------------------------------------------------------------------------
 
-class TestOgmaPathResolution:
+class TestLibraryPathResolution:
     @pytest.fixture(autouse=True)
     def _reset(self, monkeypatch):
-        monkeypatch.setattr(_config, "_ogma_path", "")
-        monkeypatch.delenv("OGMA_JS_PATH", raising=False)
+        monkeypatch.setattr(_config, "_library_path", "")
+        monkeypatch.delenv("OGMA_LOCAL_PATH", raising=False)
 
     def test_explicit_arg_wins(self, monkeypatch):
-        monkeypatch.setattr(_config, "_ogma_path", "configured")
-        monkeypatch.setenv("OGMA_JS_PATH", "env")
-        assert _config.get_ogma_path("explicit") == "explicit"
+        monkeypatch.setattr(_config, "_library_path", "configured")
+        monkeypatch.setenv("OGMA_LOCAL_PATH", "env")
+        assert _config.get_library_path("explicit") == "explicit"
 
     def test_configured_path(self, monkeypatch):
-        monkeypatch.setattr(_config, "_ogma_path", "/tmp/ogma.umd.cjs")
-        assert _config.get_ogma_path() == "/tmp/ogma.umd.cjs"
+        monkeypatch.setattr(_config, "_library_path", "/tmp/ogma.umd.cjs")
+        assert _config.get_library_path() == "/tmp/ogma.umd.cjs"
 
     def test_env_var(self, monkeypatch):
-        monkeypatch.setenv("OGMA_JS_PATH", "/tmp/env-ogma.umd.cjs")
-        assert _config.get_ogma_path() == "/tmp/env-ogma.umd.cjs"
+        monkeypatch.setenv("OGMA_LOCAL_PATH", "/tmp/env-ogma.umd.cjs")
+        assert _config.get_library_path() == "/tmp/env-ogma.umd.cjs"
 
     def test_empty_when_unset(self):
-        assert _config.get_ogma_path() == ""
+        assert _config.get_library_path() == ""
 
-    def test_set_ogma_path_updates_config(self, monkeypatch):
-        og.set_ogma_path("/tmp/some/ogma.umd.cjs")
-        assert _config.get_ogma_path() == "/tmp/some/ogma.umd.cjs"
+    def test_set_library_path_updates_config(self, monkeypatch):
+        og.set_library_path("/tmp/some/ogma.umd.cjs")
+        assert _config.get_library_path() == "/tmp/some/ogma.umd.cjs"
 
 
 # ---------------------------------------------------------------------------

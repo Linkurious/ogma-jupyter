@@ -65,10 +65,10 @@ def get_local_ogma_path() -> Optional[Path]:
 
     Resolution order:
 
-    1. A user-configured local path (``og.set_ogma_path(...)`` or the
-       ``OGMA_JS_PATH`` env var). This lets users point ogma-jupyter at an Ogma
-       build they already have on disk, with no license key or network access.
-       The path may be a UMD file directly, or a directory containing
+    1. A user-configured local path (``og.set_library_path(...)`` or the
+       ``OGMA_LOCAL_PATH`` env var). This lets users point ogma-jupyter at an
+       Ogma build they already have on disk, with no license key or network
+       access. The path may be a UMD file directly, or a directory containing
        ``ogma.umd.cjs`` / ``ogma.umd.js`` (e.g. an unpacked npm package).
     2. The repo-local ``@linkurious/ogma`` dev dependency from ``node_modules``
        (development/testing convenience). It is never present in an installed
@@ -81,7 +81,7 @@ def get_local_ogma_path() -> Optional[Path]:
     # 1. User-configured local Ogma path (highest priority).
     from . import config
 
-    configured = config.get_ogma_path()
+    configured = config.get_library_path()
     if configured:
         resolved = _resolve_configured_ogma_path(configured)
         if resolved is not None:

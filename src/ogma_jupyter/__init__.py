@@ -50,11 +50,11 @@ def set_license(
         ensure_bundle(key)
 
 
-def set_ogma_path(path: str) -> None:
+def set_library_path(path: str) -> None:
     """Load Ogma from a local file instead of downloading it.
 
-    Use this when you already have an Ogma UMD build on disk (for example in an
-    offline or air-gapped environment) and want to skip the license-gated
+    Use this when you already have an Ogma library build on disk (for example in
+    an offline or air-gapped environment) and want to skip the license-gated
     download entirely. No license key or network access is required in this
     mode.
 
@@ -63,24 +63,24 @@ def set_ogma_path(path: str) -> None:
     Parameters
     ----------
     path : str
-        Path to an Ogma UMD build (``ogma.umd.cjs`` or ``ogma.umd.js``), or to a
-        directory that contains one (e.g. an unpacked ``@linkurious/ogma`` npm
-        package). ``~`` is expanded.
+        Path to an Ogma library build (``ogma.umd.cjs`` or ``ogma.umd.js``), or
+        to a directory that contains one (e.g. an unpacked ``@linkurious/ogma``
+        npm package). ``~`` is expanded.
 
     Notes
     -----
-    Alternatively, set the ``OGMA_JS_PATH`` environment variable to the same
+    Alternatively, set the ``OGMA_LOCAL_PATH`` environment variable to the same
     value. Downloading with a license key remains the default when neither is
     configured.
 
     Examples
     --------
     >>> import ogma_jupyter as og
-    >>> og.set_ogma_path("~/ogma/ogma.umd.cjs")
+    >>> og.set_library_path("~/ogma/ogma.umd.cjs")
     >>> og.demo()
     """
     from . import config as _config
-    _config._ogma_path = path
+    _config._library_path = path
 
 
 def get_example_path() -> Path:
@@ -128,7 +128,7 @@ __all__ = [
     "OgmaRenderError",
     "rules",
     "set_license",
-    "set_ogma_path",
+    "set_library_path",
     "demo",
     "get_example_path",
 ]
