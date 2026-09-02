@@ -97,6 +97,30 @@ widget
 2. `og.set_license("key")` called earlier in the notebook
 3. `OGMA_LICENSE_KEY` environment variable
 
+### Using a local Ogma build (offline mode)
+
+If you already have an Ogma UMD build on disk — for example in an offline or
+air-gapped environment — you can point ogma-jupyter at it and skip the
+license-gated download entirely. No license key or network access is required in
+this mode:
+
+```python
+import ogma_jupyter as og
+
+# Point at an Ogma UMD file, or a directory containing ogma.umd.cjs / ogma.umd.js
+og.set_ogma_path("~/ogma/ogma.umd.cjs")
+
+og.demo()
+```
+
+Or set the `OGMA_JS_PATH` environment variable to the same value:
+
+```bash
+export OGMA_JS_PATH=~/ogma/ogma.umd.cjs
+```
+
+Downloading with a license key remains the default when neither is configured.
+
 ## Graph data format
 
 `graph_data` follows Ogma's `RawGraph` schema:
@@ -188,6 +212,14 @@ Otherwise the Ogma bundle is downloaded lazily on first widget render, using the
 configured license key (`og.set_license(...)` or the `OGMA_LICENSE_KEY`
 environment variable). The download happens once and is cached for later
 sessions.
+
+### `og.set_ogma_path(path)`
+
+Load Ogma from a local UMD build instead of downloading it — useful in offline
+or air-gapped environments. `path` may be an `ogma.umd.cjs` / `ogma.umd.js` file,
+or a directory containing one. Equivalent to setting the `OGMA_JS_PATH`
+environment variable. When set, no license key or network access is required;
+downloading remains the default when it is not.
 
 ### `og.demo()`
 
