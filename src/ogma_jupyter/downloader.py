@@ -10,6 +10,7 @@ import io
 import tarfile
 import urllib.error
 import urllib.request
+import warnings
 from pathlib import Path
 from typing import Optional
 
@@ -60,15 +61,40 @@ def get_core_path() -> Path:
 
 
 def get_local_ogma_path() -> Optional[Path]:
-    """Return the repo-local Ogma UMD build from node_modules, if available.
+    """Return a local Ogma UMD build to use instead of downloading Ogma.
 
-    This is a development/testing convenience: when working from a source
-    checkout, the ``@linkurious/ogma`` dev dependency provides a UMD build that
-    can be used directly, so the examples and tests render without a license key
-    or any network access. It is never present in an installed
-    distribution (which ships no ``node_modules``), so it does not affect
-    end-user behaviour.
+    Resolution order:
+
+    1. A user-configured local path (``og.set_library_path(...)`` or the
+       ``OGMA_LOCAL_PATH`` env var). This lets users point ogma-jupyter at an
+       Ogma build they already have on disk, with no license key or network
+       access. The path may be a UMD file directly, or a directory containing
+       ``ogma.umd.cjs`` / ``ogma.umd.js`` (e.g. an unpacked npm package).
+    2. The repo-local ``@linkurious/ogma`` dev dependency from ``node_modules``
+       (development/testing convenience). It is never present in an installed
+       distribution (which ships no ``node_modules``), so it does not affect
+       end-user behaviour.
+
+    Returns ``None`` when no local Ogma build is available, in which case Ogma
+    must still be downloaded at runtime via the configured license key.
     """
+    # 1. User-configured local Ogma path (highest priority).
+    from . import config
+
+    configured = config.get_library_path()
+    if configured:
+        resolved = _resolve_configured_ogma_path(configured)
+        if resolved is not None:
+            return resolved
+        warnings.warn(
+            f"Configured Ogma path '{configured}' does not point to an Ogma UMD "
+            f"build (expected a .cjs/.js file, or a directory containing "
+            f"'ogma.umd.cjs' / 'ogma.umd.js'). Falling back to the default "
+            f"download behaviour.",
+            stacklevel=2,
+        )
+
+    # 2. Repo-local node_modules build (development/testing).
     # This file lives at <repo>/src/ogma_jupyter/downloader.py, so parents[2] is
     # the repository root in an editable/source checkout.
     repo_root = Path(__file__).resolve().parents[2]
@@ -81,6 +107,25 @@ def get_local_ogma_path() -> Optional[Path]:
         candidate = ogma_dir / filename
         if candidate.exists():
             return candidate
+    return None
+
+
+def _resolve_configured_ogma_path(configured: str) -> Optional[Path]:
+    """Resolve a user-configured Ogma path to a concrete UMD file, if valid.
+
+    Accepts either a path to a UMD build file directly, or a directory
+    containing ``ogma.umd.cjs`` / ``ogma.umd.js``. Returns ``None`` when the
+    path does not resolve to an existing UMD build.
+    """
+    path = Path(configured).expanduser()
+    if path.is_dir():
+        for filename in ("ogma.umd.cjs", "ogma.umd.js"):
+            candidate = path / filename
+            if candidate.exists():
+                return candidate
+        return None
+    if path.is_file():
+        return path
     return None
 
 
