@@ -247,8 +247,12 @@ function createEventBridge(ogma, model) {
 var render = ({ model, el }) => {
   const typedModel = model;
   el.style.width = "100%";
-  el.style.height = "400px";
-  el.style.minHeight = "400px";
+  const applyHeight = () => {
+    const height = `${typedModel.get("height") ?? 700}px`;
+    el.style.height = height;
+    el.style.minHeight = height;
+  };
+  applyHeight();
   if (typeof Ogma === "undefined") {
     el.style.display = "flex";
     el.style.alignItems = "center";
@@ -311,6 +315,10 @@ var render = ({ model, el }) => {
   typedModel.on("change:graph_data", () => void loadGraph());
   typedModel.on("change:style_rules", applyStyles);
   typedModel.on("change:graph_layout", () => void runInitialLayout());
+  typedModel.on("change:height", () => {
+    applyHeight();
+    ogma.view.forceResize();
+  });
   typedModel.on(
     "change:event_subscriptions",
     () => eventBridge.sync(typedModel.get("event_subscriptions") ?? [])

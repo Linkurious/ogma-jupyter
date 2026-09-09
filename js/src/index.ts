@@ -26,8 +26,12 @@ const render: Render<WidgetModel> = ({ model, el }) => {
 
     // Set container size for visualization
     el.style.width = "100%";
-    el.style.height = "400px";
-    el.style.minHeight = "400px";
+    const applyHeight = (): void => {
+        const height = `${typedModel.get("height") ?? 700}px`;
+        el.style.height = height;
+        el.style.minHeight = height;
+    };
+    applyHeight();
 
     // The commercial Ogma library is downloaded at runtime and prepended to this
     // module as a global. When it has not been downloaded yet (no license
@@ -124,6 +128,10 @@ const render: Render<WidgetModel> = ({ model, el }) => {
     typedModel.on("change:graph_data", () => void loadGraph());
     typedModel.on("change:style_rules", applyStyles);
     typedModel.on("change:graph_layout", () => void runInitialLayout());
+    typedModel.on("change:height", () => {
+        applyHeight();
+        ogma.view.forceResize();
+    });
     typedModel.on("change:event_subscriptions", () =>
         eventBridge.sync(typedModel.get("event_subscriptions") ?? []),
     );

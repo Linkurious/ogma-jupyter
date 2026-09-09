@@ -11,11 +11,11 @@
     "test:run": ".venv/bin/python -m pytest --junitxml=reports/pytest/junit-test-results.xml",
     "test:unit": "npm run test:install && npm run test:run",
     "test": "npm run test:install && npm run test:run",
-    "lint": ".venv/bin/python -m ruff check ."
+    "lint": ".venv/bin/python -m ruff check .",
+    "postversion": "npx --yes @linkurious/code-tools@0.2.0 sync_versions"
   },
   "devDependencies": {
     "@anywidget/types": "0.2.0",
-    "@linkurious/code-tools": "0.2.0",
     "esbuild": "0.24.0",
     "typescript": "7.0.2"
   },

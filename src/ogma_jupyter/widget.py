@@ -351,6 +351,8 @@ class OgmaWidget(anywidget.AnyWidget):
         Initial list of style rule dicts (use ``ogma_jupyter.rules`` helpers).
     graph_layout : dict, optional
         Initial layout config, e.g. ``{"name": "force"}``.
+    height : int, optional
+        Widget height in pixels. Defaults to 700.
 
     Notes
     -----
@@ -385,6 +387,9 @@ class OgmaWidget(anywidget.AnyWidget):
     # Initial layout config sent to JS on load
     graph_layout = traitlets.Any(None).tag(sync=True)
 
+    # Widget container height in pixels
+    height = traitlets.Int(700).tag(sync=True)
+
     # Names of Ogma events (see ogma.events.on) currently subscribed to; the JS
     # side syncs its ogma.events.on()/off() calls to match this list. Populated
     # by on()/off()/once(), not meant to be set directly.
@@ -394,10 +399,12 @@ class OgmaWidget(anywidget.AnyWidget):
         self,
         graph_data: Optional[Dict] = None,
         license_key: Optional[str] = None,
+        height: int = 700,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self._license_key = get_license_key(license_key)
+        self.height = height
         # When the class-level default already carries Ogma (assembled bundle
         # file), no per-instance override is needed — the model is born complete,
         # which avoids large late _esm reassignments that can confuse some widget
