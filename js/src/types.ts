@@ -45,21 +45,14 @@ export interface RunLayoutMessage {
     options?: Record<string, unknown>;
 }
 
-// Group nodes sharing the value at `key` into a single meta-node.
-export interface GroupNodesMessage {
-    type: "group_nodes";
+// Active node-grouping spec (synced traitlet). null means "no grouping".
+export interface NodeGroupingSpec {
     key: string;
 }
 
-// Remove any active node grouping.
-export interface UngroupNodesMessage {
-    type: "ungroup_nodes";
-}
-
-// Merge parallel edges (same source/target) into a single meta-edge.
-// All fields are optional; see EdgeGroupingOptions in grouping.ts.
-export interface GroupEdgesMessage {
-    type: "group_edges";
+// Active edge-grouping spec (synced traitlet); see EdgeGroupingOptions in
+// grouping.ts. null means "no grouping".
+export interface EdgeGroupingSpec {
     key?: string;
     selectorKey?: string;
     dataAggregate?: Record<string, unknown>;
@@ -67,17 +60,8 @@ export interface GroupEdgesMessage {
     enabled?: boolean;
 }
 
-// Remove any active edge grouping.
-export interface UngroupEdgesMessage {
-    type: "ungroup_edges";
-}
-
 export type CustomMessage =
     | RunLayoutMessage
-    | GroupNodesMessage
-    | UngroupNodesMessage
-    | GroupEdgesMessage
-    | UngroupEdgesMessage
     | { type: string; [key: string]: unknown };
 
 // Synced traitlets exposed by OgmaWidget (see src/ogma_jupyter/widget.py).
@@ -91,6 +75,10 @@ export interface WidgetModel {
     // Names of Ogma events (see ogma.events.on) Python currently wants to
     // receive, kept in sync by OgmaWidget.on()/off().
     event_subscriptions: string[];
+    // Active node grouping (see OgmaWidget.group_nodes) or null.
+    node_grouping: NodeGroupingSpec | null;
+    // Active edge grouping (see OgmaWidget.group_edges) or null.
+    edge_grouping: EdgeGroupingSpec | null;
 }
 
 export type OgmaModel = AnyModel<WidgetModel>;

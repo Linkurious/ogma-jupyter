@@ -12,9 +12,9 @@ import {
 import { createEventBridge } from "./events";
 import type {
     CustomMessage,
-    GroupNodesMessage,
-    GroupEdgesMessage,
+    EdgeGroupingSpec,
     LayoutSpec,
+    NodeGroupingSpec,
     OgmaModel,
     RunLayoutMessage,
     WidgetModel,
@@ -120,6 +120,34 @@ const render: Render<WidgetModel> = ({ model, el }) => {
         );
     };
 
+    const applyNodeGroupingFromModel = (): void => {
+        const spec = typedModel.get("node_grouping") as NodeGroupingSpec | null;
+        if (!spec) {
+            void removeGrouping(nodeGrouping);
+            nodeGrouping = null;
+            return;
+        }
+        void applyGrouping(ogma, spec.key, nodeGrouping).then((handle) => {
+            nodeGrouping = handle;
+        });
+    };
+
+    const applyEdgeGroupingFromModel = (): void => {
+        const spec = typedModel.get("edge_grouping") as EdgeGroupingSpec | null;
+        if (!spec) {
+            void removeEdgeGrouping(edgeGrouping);
+            edgeGrouping = null;
+            return;
+        }
+        void applyEdgeGrouping(
+            ogma,
+            spec as Parameters<typeof applyEdgeGrouping>[1],
+            edgeGrouping,
+        ).then((handle) => {
+            edgeGrouping = handle;
+        });
+    };
+
     const runInitialLayout = async (): Promise<void> => {
         const layout: LayoutSpec | null = typedModel.get("graph_layout");
         if (layout && layout.name) {
@@ -132,6 +160,8 @@ const render: Render<WidgetModel> = ({ model, el }) => {
     void (async () => {
         await loadGraph();
         applyStyles();
+        applyNodeGroupingFromModel();
+        applyEdgeGroupingFromModel();
         await runInitialLayout();
     })();
 
@@ -139,6 +169,8 @@ const render: Render<WidgetModel> = ({ model, el }) => {
     typedModel.on("change:graph_data", () => void loadGraph());
     typedModel.on("change:style_rules", applyStyles);
     typedModel.on("change:graph_layout", () => void runInitialLayout());
+    typedModel.on("change:node_grouping", applyNodeGroupingFromModel);
+    typedModel.on("change:edge_grouping", applyEdgeGroupingFromModel);
     typedModel.on("change:height", () => {
         applyHeight();
         ogma.view.forceResize();
@@ -154,26 +186,6 @@ const render: Render<WidgetModel> = ({ model, el }) => {
         if (msg.type === "run_layout") {
             const { name, options } = msg as RunLayoutMessage;
             void runLayout(ogma, name, options ?? {});
-        } else if (msg.type === "group_nodes") {
-            const { key } = msg as GroupNodesMessage;
-            void applyGrouping(ogma, key, nodeGrouping).then((handle) => {
-                nodeGrouping = handle;
-            });
-        } else if (msg.type === "ungroup_nodes") {
-            void removeGrouping(nodeGrouping);
-            nodeGrouping = null;
-        } else if (msg.type === "group_edges") {
-            const { type: _t, ...options } = msg as GroupEdgesMessage;
-            void applyEdgeGrouping(
-                ogma,
-                options as Parameters<typeof applyEdgeGrouping>[1],
-                edgeGrouping,
-            ).then((handle) => {
-                edgeGrouping = handle;
-            });
-        } else if (msg.type === "ungroup_edges") {
-            void removeEdgeGrouping(edgeGrouping);
-            edgeGrouping = null;
         }
     });
 

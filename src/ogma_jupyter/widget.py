@@ -395,6 +395,17 @@ class OgmaWidget(anywidget.AnyWidget):
     # by on()/off()/once(), not meant to be set directly.
     event_subscriptions = traitlets.List(traitlets.Unicode()).tag(sync=True)
 
+    # Active node grouping spec (``{"key": "data.<path>"}``) or ``None``. Kept
+    # as a synced traitlet — not a custom message — so it survives the
+    # "spec set before the widget is displayed" case, which would otherwise
+    # drop the message on the floor. Populated by group_nodes()/ungroup_nodes().
+    node_grouping = traitlets.Any(None, allow_none=True).tag(sync=True)
+
+    # Active edge grouping spec (see group_edges() for the shape) or ``None``.
+    # Synced for the same reason as ``node_grouping``. Populated by
+    # group_edges()/ungroup_edges().
+    edge_grouping = traitlets.Any(None, allow_none=True).tag(sync=True)
+
     def __init__(
         self,
         graph_data: Optional[Dict] = None,
@@ -523,11 +534,11 @@ class OgmaWidget(anywidget.AnyWidget):
         --------
         >>> widget.group_nodes(key="data.department")
         """
-        self.send({"type": "group_nodes", "key": key})
+        self.node_grouping = {"key": key}
 
     def ungroup_nodes(self) -> None:
         """Remove all node groupings."""
-        self.send({"type": "ungroup_nodes"})
+        self.node_grouping = None
 
     def group_edges(
         self,
@@ -603,7 +614,7 @@ class OgmaWidget(anywidget.AnyWidget):
         ...                           values={"nbSlices": 4, "min": 1, "max": 8}),
         ... })
         """
-        msg: Dict[str, Any] = {"type": "group_edges"}
+        msg: Dict[str, Any] = {}
         if key is not None:
             msg["key"] = key
         if selector_key is not None:
@@ -614,11 +625,11 @@ class OgmaWidget(anywidget.AnyWidget):
             msg["separateEdgesByDirection"] = separate_edges_by_direction
         if enabled is not None:
             msg["enabled"] = enabled
-        self.send(msg)
+        self.edge_grouping = msg
 
     def ungroup_edges(self) -> None:
         """Remove any active edge grouping."""
-        self.send({"type": "ungroup_edges"})
+        self.edge_grouping = None
 
     def on(self, event_name: str, handler: Callable[[Dict[str, Any]], None]) -> None:
         """Subscribe to an Ogma event and receive its payload in Python.
