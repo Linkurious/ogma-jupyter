@@ -68,6 +68,9 @@ export interface WidgetModel {
     _license_key: string;
     style_rules: StyleRuleSpec[];
     graph_layout: LayoutSpec | null;
+    // Names of Ogma events (see ogma.events.on) Python currently wants to
+    // receive, kept in sync by OgmaWidget.on()/off().
+    event_subscriptions: string[];
 }
 
 export type OgmaModel = AnyModel<WidgetModel>;
