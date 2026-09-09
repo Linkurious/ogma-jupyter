@@ -1,13 +1,19 @@
-import type { StyleRule, NodeGrouping } from "@linkurious/ogma";
+import type { StyleRule, NodeGrouping, EdgeGrouping } from "@linkurious/ogma";
 import type { Render } from "@anywidget/types";
 
 import { applyStyleRules } from "./styles";
 import { runLayout } from "./layouts";
-import { applyGrouping, removeGrouping } from "./grouping";
+import {
+    applyGrouping,
+    removeGrouping,
+    applyEdgeGrouping,
+    removeEdgeGrouping,
+} from "./grouping";
 import { createEventBridge } from "./events";
 import type {
     CustomMessage,
     GroupNodesMessage,
+    GroupEdgesMessage,
     LayoutSpec,
     OgmaModel,
     RunLayoutMessage,
@@ -65,6 +71,11 @@ const render: Render<WidgetModel> = ({ model, el }) => {
     // Active node-grouping transformation, kept so it can be replaced or removed
     // when new group_nodes / ungroup_nodes messages arrive.
     let nodeGrouping: NodeGrouping<unknown, unknown> | null = null;
+
+    // Active edge-grouping transformation (parallel-edge merging), kept so it
+    // can be replaced or removed when new group_edges / ungroup_edges messages
+    // arrive.
+    let edgeGrouping: EdgeGrouping<unknown, unknown> | null = null;
 
     // Forwards arbitrary ogma.events.on(...) events to Python (see OgmaWidget.on()).
     const eventBridge = createEventBridge(ogma, typedModel);
@@ -151,6 +162,18 @@ const render: Render<WidgetModel> = ({ model, el }) => {
         } else if (msg.type === "ungroup_nodes") {
             void removeGrouping(nodeGrouping);
             nodeGrouping = null;
+        } else if (msg.type === "group_edges") {
+            const { type: _t, ...options } = msg as GroupEdgesMessage;
+            void applyEdgeGrouping(
+                ogma,
+                options as Parameters<typeof applyEdgeGrouping>[1],
+                edgeGrouping,
+            ).then((handle) => {
+                edgeGrouping = handle;
+            });
+        } else if (msg.type === "ungroup_edges") {
+            void removeEdgeGrouping(edgeGrouping);
+            edgeGrouping = null;
         }
     });
 

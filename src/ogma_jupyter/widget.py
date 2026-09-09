@@ -529,6 +529,97 @@ class OgmaWidget(anywidget.AnyWidget):
         """Remove all node groupings."""
         self.send({"type": "ungroup_nodes"})
 
+    def group_edges(
+        self,
+        key: Optional[str] = None,
+        selector_key: Optional[str] = None,
+        data_aggregate: Optional[Dict[str, Dict[str, Any]]] = None,
+        separate_edges_by_direction: Optional[bool] = None,
+        enabled: Optional[bool] = None,
+    ) -> None:
+        """Merge parallel edges into a single meta-edge.
+
+        Edges sharing the same source/target pair are collapsed into one
+        meta-edge via Ogma's edge-grouping transformation
+        (``ogma.transformations.addEdgeGrouping``). Calling again while an
+        edge grouping is already active replaces it (no stacking).
+
+        Ogma's ``selector``, ``groupIdFunction`` and ``generator`` options are
+        function-valued and cannot cross the widget bridge; instead, pass the
+        serialisable equivalents below and the JavaScript side builds the
+        closures. Visual attributes (width, color, ...) on the resulting
+        meta-edges are expected to be driven by style rules bound to the
+        aggregated ``data.*`` fields — the generator never writes to
+        ``attributes`` other than ``text`` (the group id).
+
+        Every meta-edge carries at least:
+
+        - ``data.subEdges``: list of merged edge ids.
+        - ``data.count``: number of merged edges (add an entry with output key
+          ``"count"`` in ``data_aggregate`` to override).
+        - ``data.<last segment of key>``: the shared ``key`` value (when
+          ``key`` is set).
+
+        Parameters
+        ----------
+        key : str, optional
+            Data-property path used to build the ``groupIdFunction``, e.g.
+            ``"data.kind"``. Edges are grouped only when they are parallel
+            *and* share this value. When omitted, all parallel edges are
+            grouped together.
+        selector_key : str, optional
+            Data-property path whose truthy value keeps an edge in the
+            grouping; edges with a falsy value are left ungrouped. Maps to
+            Ogma's ``selector``.
+        data_aggregate : dict, optional
+            Extra values to compute on the meta-edge's ``data``. Each entry
+            maps an output field name to an operation spec::
+
+                {"count":       {"op": "count"}}
+                {"totalWeight": {"op": "sum",  "field": "data.weight"}}
+                {"maxTime":     {"op": "max",  "field": "data.TIME"}}
+                {"firstKind":   {"op": "first","field": "data.kind"}}
+                {"weights":     {"op": "collect", "field": "data.weight"}}
+
+            Supported ops: ``count``, ``sum``, ``min``, ``max``, ``avg``,
+            ``first``, ``last``, ``collect``. Non-numeric values are skipped
+            for numeric ops. ``count`` and ``collect`` accept an optional
+            ``field``; the others require one.
+        separate_edges_by_direction : bool, optional
+            Forwarded to Ogma's ``separateEdgesByDirection``.
+        enabled : bool, optional
+            Forwarded to Ogma's ``enabled``.
+
+        Examples
+        --------
+        >>> widget.group_edges()  # merge parallel edges, meta-edge gets data.count
+        >>> widget.group_edges(
+        ...     key="data.kind",
+        ...     data_aggregate={"totalWeight": {"op": "sum", "field": "data.weight"}},
+        ... )
+        >>> # Then drive width from the aggregated data via a style rule:
+        >>> widget.add_style_rule(edge_attributes={
+        ...     "width": rules.slices(field="data.count",
+        ...                           values={"nbSlices": 4, "min": 1, "max": 8}),
+        ... })
+        """
+        msg: Dict[str, Any] = {"type": "group_edges"}
+        if key is not None:
+            msg["key"] = key
+        if selector_key is not None:
+            msg["selectorKey"] = selector_key
+        if data_aggregate is not None:
+            msg["dataAggregate"] = {k: dict(v) for k, v in data_aggregate.items()}
+        if separate_edges_by_direction is not None:
+            msg["separateEdgesByDirection"] = separate_edges_by_direction
+        if enabled is not None:
+            msg["enabled"] = enabled
+        self.send(msg)
+
+    def ungroup_edges(self) -> None:
+        """Remove any active edge grouping."""
+        self.send({"type": "ungroup_edges"})
+
     def on(self, event_name: str, handler: Callable[[Dict[str, Any]], None]) -> None:
         """Subscribe to an Ogma event and receive its payload in Python.
 

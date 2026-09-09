@@ -153,6 +153,104 @@ async function removeGrouping(grouping) {
     console.error("[ogma-jupyter] Ungrouping failed:", error);
   }
 }
+function toNumberOrNull(value) {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+function reduceAggregate(spec, values) {
+  switch (spec.op) {
+    case "count":
+      return values.length;
+    case "collect":
+      return values;
+    case "first":
+      return values.length > 0 ? values[0] : null;
+    case "last":
+      return values.length > 0 ? values[values.length - 1] : null;
+    case "sum": {
+      let acc = 0;
+      for (const v of values) {
+        const n = toNumberOrNull(v);
+        if (n !== null) acc += n;
+      }
+      return acc;
+    }
+    case "min":
+    case "max":
+    case "avg": {
+      const nums = [];
+      for (const v of values) {
+        const n = toNumberOrNull(v);
+        if (n !== null) nums.push(n);
+      }
+      if (nums.length === 0) return null;
+      if (spec.op === "min") return Math.min(...nums);
+      if (spec.op === "max") return Math.max(...nums);
+      return nums.reduce((a, b) => a + b, 0) / nums.length;
+    }
+  }
+}
+async function applyEdgeGrouping(ogma, options, previous) {
+  await removeEdgeGrouping(previous);
+  const {
+    key,
+    selectorKey,
+    dataAggregate,
+    separateEdgesByDirection,
+    enabled
+  } = options ?? {};
+  const keyPath = key ? toDataPath(key) : null;
+  const selectorPath = selectorKey ? toDataPath(selectorKey) : null;
+  const keyField = keyPath ? keyPath[keyPath.length - 1] : void 0;
+  const aggregate = { ...dataAggregate ?? {} };
+  if (!("count" in aggregate)) {
+    aggregate.count = { op: "count" };
+  }
+  const aggregateEntries = Object.entries(aggregate);
+  try {
+    const grouping = ogma.transformations.addEdgeGrouping({
+      ...selectorPath ? { selector: (edge) => Boolean(edge.getData(selectorPath)) } : {},
+      ...keyPath ? {
+        groupIdFunction: (edge) => {
+          const value = edge.getData(keyPath);
+          return value === void 0 || value === null ? void 0 : String(value);
+        }
+      } : {},
+      generator: (edges, groupId) => {
+        const data = {
+          subEdges: edges.getId()
+        };
+        if (keyField) {
+          const values = edges.getData(keyPath);
+          data[keyField] = Array.isArray(values) ? values[0] : values;
+        }
+        for (const [outKey, spec] of aggregateEntries) {
+          const values = "field" in spec && spec.field ? edges.getData(toDataPath(spec.field)) : edges.getId();
+          data[outKey] = reduceAggregate(spec, values);
+        }
+        return {
+          data,
+          attributes: { text: groupId }
+        };
+      },
+      ...separateEdgesByDirection !== void 0 ? { separateEdgesByDirection } : {},
+      ...enabled !== void 0 ? { enabled } : {}
+    });
+    await grouping.whenApplied();
+    return grouping;
+  } catch (error) {
+    console.error("[ogma-jupyter] Edge grouping failed:", error);
+    return null;
+  }
+}
+async function removeEdgeGrouping(grouping) {
+  if (!grouping) return;
+  try {
+    await grouping.destroy();
+  } catch (error) {
+    console.error("[ogma-jupyter] Edge ungrouping failed:", error);
+  }
+}
 
 // js/src/serialize.ts
 function isOgmaElement(value) {
@@ -269,6 +367,7 @@ var render = ({ model, el }) => {
   const ogma = new Ogma({ container: el });
   let styleRuleHandles = [];
   let nodeGrouping = null;
+  let edgeGrouping = null;
   const eventBridge = createEventBridge(ogma, typedModel);
   let lastWidth = 0;
   let lastHeight = 0;
@@ -337,6 +436,18 @@ var render = ({ model, el }) => {
     } else if (msg.type === "ungroup_nodes") {
       void removeGrouping(nodeGrouping);
       nodeGrouping = null;
+    } else if (msg.type === "group_edges") {
+      const { type: _t, ...options } = msg;
+      void applyEdgeGrouping(
+        ogma,
+        options,
+        edgeGrouping
+      ).then((handle) => {
+        edgeGrouping = handle;
+      });
+    } else if (msg.type === "ungroup_edges") {
+      void removeEdgeGrouping(edgeGrouping);
+      edgeGrouping = null;
     }
   });
   return () => {

@@ -56,10 +56,28 @@ export interface UngroupNodesMessage {
     type: "ungroup_nodes";
 }
 
+// Merge parallel edges (same source/target) into a single meta-edge.
+// All fields are optional; see EdgeGroupingOptions in grouping.ts.
+export interface GroupEdgesMessage {
+    type: "group_edges";
+    key?: string;
+    selectorKey?: string;
+    dataAggregate?: Record<string, unknown>;
+    separateEdgesByDirection?: boolean;
+    enabled?: boolean;
+}
+
+// Remove any active edge grouping.
+export interface UngroupEdgesMessage {
+    type: "ungroup_edges";
+}
+
 export type CustomMessage =
     | RunLayoutMessage
     | GroupNodesMessage
     | UngroupNodesMessage
+    | GroupEdgesMessage
+    | UngroupEdgesMessage
     | { type: string; [key: string]: unknown };
 
 // Synced traitlets exposed by OgmaWidget (see src/ogma_jupyter/widget.py).
