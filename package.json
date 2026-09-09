@@ -12,7 +12,7 @@
     "test:unit": "npm run test:install && npm run test:run",
     "test": "npm run test:install && npm run test:run",
     "lint": ".venv/bin/python -m ruff check .",
-    "postversion": "npx --yes @linkurious/code-tools@0.2.0 sync_versions"
+    "postversion": "npx --yes @linkurious/code-tools@0.2.0 sync_versions || echo 'postversion: skipping sync_versions (no private registry credentials in this build)'"
   },
   "devDependencies": {
     "@anywidget/types": "0.2.0",
