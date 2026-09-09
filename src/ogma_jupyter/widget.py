@@ -2,7 +2,7 @@
 
 import pathlib
 import warnings
-from typing import Any, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 import anywidget
 import traitlets
@@ -351,6 +351,19 @@ class OgmaWidget(anywidget.AnyWidget):
         Initial list of style rule dicts (use ``ogma_jupyter.rules`` helpers).
     graph_layout : dict, optional
         Initial layout config, e.g. ``{"name": "force"}``.
+    height : int, optional
+        Widget height in pixels. Defaults to 700.
+
+    Notes
+    -----
+    Use :meth:`on` to receive any Ogma event (click, hover, drag, selection,
+    layout, ...) in Python::
+
+        def on_click(evt):
+            if evt["target"]:
+                print("clicked", evt["target"]["id"])
+
+        widget.on("click", on_click)
     """
 
     # Class-level ESM default. When Ogma is available locally (cache or the repo
@@ -374,14 +387,24 @@ class OgmaWidget(anywidget.AnyWidget):
     # Initial layout config sent to JS on load
     graph_layout = traitlets.Any(None).tag(sync=True)
 
+    # Widget container height in pixels
+    height = traitlets.Int(700).tag(sync=True)
+
+    # Names of Ogma events (see ogma.events.on) currently subscribed to; the JS
+    # side syncs its ogma.events.on()/off() calls to match this list. Populated
+    # by on()/off()/once(), not meant to be set directly.
+    event_subscriptions = traitlets.List(traitlets.Unicode()).tag(sync=True)
+
     def __init__(
         self,
         graph_data: Optional[Dict] = None,
         license_key: Optional[str] = None,
+        height: int = 700,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
         self._license_key = get_license_key(license_key)
+        self.height = height
         # When the class-level default already carries Ogma (assembled bundle
         # file), no per-instance override is needed — the model is born complete,
         # which avoids large late _esm reassignments that can confuse some widget
@@ -393,6 +416,10 @@ class OgmaWidget(anywidget.AnyWidget):
                 self._esm = bundle_source
         if graph_data is not None:
             self.graph_data = graph_data
+        # Python-side handlers per event name (JS holds only one listener per
+        # event name; fan-out to multiple Python callbacks happens here).
+        self._event_handlers: Dict[str, List[Callable[[Dict[str, Any]], None]]] = {}
+        self.on_msg(self._dispatch_message)
 
     @traitlets.validate("graph_data")
     def _validate_graph_data(self, proposal: Dict) -> Any:
@@ -501,4 +528,93 @@ class OgmaWidget(anywidget.AnyWidget):
     def ungroup_nodes(self) -> None:
         """Remove all node groupings."""
         self.send({"type": "ungroup_nodes"})
+
+    def on(self, event_name: str, handler: Callable[[Dict[str, Any]], None]) -> None:
+        """Subscribe to an Ogma event and receive its payload in Python.
+
+        Mirrors Ogma's own ``ogma.events.on(eventName, listener)`` API — any
+        event name it accepts works here too (``click``, ``doubleclick``,
+        ``mouseover``, ``mouseout``, ``nodesDragEnd``, ``nodesSelected``,
+        ``layoutEnd``, ...); see the Ogma events documentation for the full
+        list and each event's payload shape:
+        https://doc.linkurio.us/ogma/latest/api.html#Ogma-events-on
+
+        Node/Edge instances, NodeList/EdgeList collections, and other Ogma
+        objects in the payload are converted to plain dicts/lists
+        (``{"id": ..., "isNode": ..., "isEdge": ..., "data": ...}``) before
+        reaching ``handler``. Native DOM events (e.g. ``domEvent``) are
+        dropped — they cannot be serialized.
+
+        Parameters
+        ----------
+        event_name : str
+            Name of the Ogma event to subscribe to.
+        handler : callable
+            Called with the serialized event payload (a dict) each time the
+            event fires. Multiple handlers may be registered for the same
+            event name.
+
+        Examples
+        --------
+        >>> def on_click(evt):
+        ...     if evt["target"]:
+        ...         print("clicked", evt["target"]["id"])
+        >>> widget.on("click", on_click)
+        """
+        if not event_name:
+            raise OgmaDataError("event_name cannot be empty")
+        self._event_handlers.setdefault(event_name, []).append(handler)
+        if event_name not in self.event_subscriptions:
+            self.event_subscriptions = self.event_subscriptions + [event_name]
+
+    def off(
+        self,
+        event_name: str,
+        handler: Optional[Callable[[Dict[str, Any]], None]] = None,
+    ) -> None:
+        """Unsubscribe from an Ogma event.
+
+        Parameters
+        ----------
+        event_name : str
+            Name of the Ogma event to unsubscribe from.
+        handler : callable, optional
+            The specific handler to remove. When omitted, all handlers for
+            ``event_name`` are removed.
+        """
+        handlers = self._event_handlers.get(event_name)
+        if not handlers:
+            return
+        if handler is None:
+            handlers.clear()
+        else:
+            # `==` (not `is`) so `widget.off("click", some_list.append)` works —
+            # bound methods compare equal by (__self__, __func__) but are a new
+            # object on every attribute access, so identity would never match.
+            handlers[:] = [h for h in handlers if h != handler]
+        if not handlers:
+            del self._event_handlers[event_name]
+            self.event_subscriptions = [e for e in self.event_subscriptions if e != event_name]
+
+    def once(self, event_name: str, handler: Callable[[Dict[str, Any]], None]) -> None:
+        """Subscribe to an Ogma event for a single occurrence, then auto-unsubscribe.
+
+        Mirrors ``ogma.events.once(eventName, listener)``. See :meth:`on` for
+        the payload shape and available event names.
+        """
+
+        def _once_handler(payload: Dict[str, Any]) -> None:
+            self.off(event_name, _once_handler)
+            handler(payload)
+
+        self.on(event_name, _once_handler)
+
+    def _dispatch_message(self, widget: "OgmaWidget", msg: Any, buffers: Any) -> None:
+        """Route JS -> Python custom messages to the registered event handlers."""
+        if not isinstance(msg, dict) or msg.get("type") != "ogma_event":
+            return
+        event_name = msg.get("event")
+        payload = msg.get("payload", {})
+        for handler in list(self._event_handlers.get(event_name, [])):
+            handler(payload)
 

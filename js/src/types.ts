@@ -68,6 +68,11 @@ export interface WidgetModel {
     _license_key: string;
     style_rules: StyleRuleSpec[];
     graph_layout: LayoutSpec | null;
+    // Widget container height in pixels (see OgmaWidget.height in widget.py).
+    height: number;
+    // Names of Ogma events (see ogma.events.on) Python currently wants to
+    // receive, kept in sync by OgmaWidget.on()/off().
+    event_subscriptions: string[];
 }
 
 export type OgmaModel = AnyModel<WidgetModel>;

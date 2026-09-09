@@ -4,6 +4,7 @@ import type { Render } from "@anywidget/types";
 import { applyStyleRules } from "./styles";
 import { runLayout } from "./layouts";
 import { applyGrouping, removeGrouping } from "./grouping";
+import { createEventBridge } from "./events";
 import type {
     CustomMessage,
     GroupNodesMessage,
@@ -25,8 +26,12 @@ const render: Render<WidgetModel> = ({ model, el }) => {
 
     // Set container size for visualization
     el.style.width = "100%";
-    el.style.height = "400px";
-    el.style.minHeight = "400px";
+    const applyHeight = (): void => {
+        const height = `${typedModel.get("height") ?? 700}px`;
+        el.style.height = height;
+        el.style.minHeight = height;
+    };
+    applyHeight();
 
     // The commercial Ogma library is downloaded at runtime and prepended to this
     // module as a global. When it has not been downloaded yet (no license
@@ -60,6 +65,9 @@ const render: Render<WidgetModel> = ({ model, el }) => {
     // Active node-grouping transformation, kept so it can be replaced or removed
     // when new group_nodes / ungroup_nodes messages arrive.
     let nodeGrouping: NodeGrouping<unknown, unknown> | null = null;
+
+    // Forwards arbitrary ogma.events.on(...) events to Python (see OgmaWidget.on()).
+    const eventBridge = createEventBridge(ogma, typedModel);
 
     // In Jupyter the output cell is often still being laid out when Ogma first
     // measures its container, so the WebGL canvas can initialize at 0x0 and the
@@ -120,6 +128,14 @@ const render: Render<WidgetModel> = ({ model, el }) => {
     typedModel.on("change:graph_data", () => void loadGraph());
     typedModel.on("change:style_rules", applyStyles);
     typedModel.on("change:graph_layout", () => void runInitialLayout());
+    typedModel.on("change:height", () => {
+        applyHeight();
+        ogma.view.forceResize();
+    });
+    typedModel.on("change:event_subscriptions", () =>
+        eventBridge.sync(typedModel.get("event_subscriptions") ?? []),
+    );
+    eventBridge.sync(typedModel.get("event_subscriptions") ?? []);
 
     // Imperative commands sent via widget.send(...) (e.g. run_layout).
     typedModel.on("msg:custom", (msg: CustomMessage) => {
@@ -143,6 +159,7 @@ const render: Render<WidgetModel> = ({ model, el }) => {
     // visualizations go blank when the limit is reached.
     return () => {
         resizeObserver.disconnect();
+        eventBridge.destroy();
         ogma.destroy();
     };
 };
