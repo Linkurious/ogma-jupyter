@@ -1,15 +1,22 @@
-import type { StyleRule, NodeGrouping } from "@linkurious/ogma";
+import type { StyleRule, NodeGrouping, EdgeGrouping } from "@linkurious/ogma";
 import type { Render } from "@anywidget/types";
 
 import { applyStyleRules } from "./styles";
 import { runLayout } from "./layouts";
-import { applyGrouping, removeGrouping } from "./grouping";
+import {
+    applyGrouping,
+    removeGrouping,
+    applyEdgeGrouping,
+    removeEdgeGrouping,
+} from "./grouping";
 import { createEventBridge } from "./events";
 import type {
     CustomMessage,
-    GroupNodesMessage,
+    EdgeGroupingSpec,
     LayoutSpec,
+    NodeGroupingSpec,
     OgmaModel,
+    PendingOp,
     RunLayoutMessage,
     WidgetModel,
 } from "./types";
@@ -32,6 +39,37 @@ const render: Render<WidgetModel> = ({ model, el }) => {
         el.style.minHeight = height;
     };
     applyHeight();
+
+    // One-time stylesheet for the node hover tooltip. Kept here (rather than a
+    // separate _css traitlet) so tooltip styling ships with the JS bundle. The
+    // guard makes multiple widget instances on the same page idempotent.
+    if (!document.getElementById("ogma-jupyter-styles")) {
+        const style = document.createElement("style");
+        style.id = "ogma-jupyter-styles";
+        style.textContent = `
+.ogma-jupyter-tooltip {
+    background: rgba(30, 30, 40, 0.92);
+    color: #f6f8fa;
+    padding: 6px 10px;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 320px;
+    word-break: break-word;
+    pointer-events: none;
+}
+.ogma-jupyter-tooltip b { color: #ffd166; }
+.ogma-jupyter-tooltip pre {
+    margin: 4px 0 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap;
+}
+`;
+        document.head.appendChild(style);
+    }
 
     // The commercial Ogma library is downloaded at runtime and prepended to this
     // module as a global. When it has not been downloaded yet (no license
@@ -65,6 +103,11 @@ const render: Render<WidgetModel> = ({ model, el }) => {
     // Active node-grouping transformation, kept so it can be replaced or removed
     // when new group_nodes / ungroup_nodes messages arrive.
     let nodeGrouping: NodeGrouping<unknown, unknown> | null = null;
+
+    // Active edge-grouping transformation (parallel-edge merging), kept so it
+    // can be replaced or removed when new group_edges / ungroup_edges messages
+    // arrive.
+    let edgeGrouping: EdgeGrouping<unknown, unknown> | null = null;
 
     // Forwards arbitrary ogma.events.on(...) events to Python (see OgmaWidget.on()).
     const eventBridge = createEventBridge(ogma, typedModel);
@@ -109,6 +152,113 @@ const render: Render<WidgetModel> = ({ model, el }) => {
         );
     };
 
+    const applyNodeGroupingFromModel = (): void => {
+        const spec = typedModel.get("node_grouping") as NodeGroupingSpec | null;
+        if (!spec) {
+            void removeGrouping(nodeGrouping);
+            nodeGrouping = null;
+            return;
+        }
+        void applyGrouping(ogma, spec.key, nodeGrouping).then((handle) => {
+            nodeGrouping = handle;
+        });
+    };
+
+    const applyEdgeGroupingFromModel = (): void => {
+        const spec = typedModel.get("edge_grouping") as EdgeGroupingSpec | null;
+        if (!spec) {
+            void removeEdgeGrouping(edgeGrouping);
+            edgeGrouping = null;
+            return;
+        }
+        void applyEdgeGrouping(
+            ogma,
+            spec as Parameters<typeof applyEdgeGrouping>[1],
+            edgeGrouping,
+        ).then((handle) => {
+            edgeGrouping = handle;
+        });
+    };
+
+    // Highest `seq` in `_pending_ops` that has already been applied. Serves as
+    // the cursor for the append-only queue populated by add_nodes/add_edges/
+    // add_graph on the Python side.
+    let appliedOpSeq = 0;
+    // Serialises applyPendingOps() calls so overlapping change events don't
+    // race and skip or double-apply entries.
+    let pendingOpsQueue: Promise<void> = Promise.resolve();
+
+    const applyPendingOps = (): void => {
+        pendingOpsQueue = pendingOpsQueue.then(async () => {
+            const ops = (typedModel.get("_pending_ops") ?? []) as PendingOp[];
+            for (const op of ops) {
+                if (op.seq <= appliedOpSeq) continue;
+                try {
+                    if (op.kind === "add_nodes") {
+                        await ogma.addNodes(op.nodes);
+                    } else if (op.kind === "add_edges") {
+                        await ogma.addEdges(op.edges);
+                    } else if (op.kind === "add_graph") {
+                        await ogma.addGraph(op.graph);
+                    }
+                } catch (err) {
+                    console.error("[ogma-jupyter] pending op failed:", op, err);
+                }
+                appliedOpSeq = op.seq;
+            }
+        });
+    };
+
+    // Node hover tooltip. Ogma's tooltip API has no "off" method, so we
+    // register the handler once and let it read the current spec from the
+    // model each time — toggling from Python just flips the traitlet.
+    const HTML_ESCAPES: Record<string, string> = {
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        '"': "&quot;",
+        "'": "&#39;",
+    };
+    const escapeHtml = (s: string): string =>
+        s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c] ?? c);
+
+    const renderTemplate = (
+        tmpl: string,
+        ctx: Record<string, unknown>,
+    ): string =>
+        tmpl.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, path: string) => {
+            let cur: unknown = ctx;
+            for (const key of path.split(".")) {
+                if (cur == null || typeof cur !== "object") return "";
+                cur = (cur as Record<string, unknown>)[key];
+            }
+            if (cur == null) return "";
+            const s = typeof cur === "object"
+                ? JSON.stringify(cur, null, 2)
+                : String(cur);
+            return escapeHtml(s);
+        });
+
+    ogma.tools.tooltip.onNodeHover(
+        (node) => {
+            const spec = typedModel.get("node_tooltip") as
+                | boolean
+                | string
+                | null;
+            if (!spec) return "";
+            const data = (node.getData() ?? {}) as Record<string, unknown>;
+            const ctx = { id: node.getId(), ...data };
+            if (spec === true) {
+                return (
+                    `<b>${escapeHtml(String(ctx.id))}</b>` +
+                    `<pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`
+                );
+            }
+            return renderTemplate(spec, ctx);
+        },
+        { className: "ogma-jupyter-tooltip" },
+    );
+
     const runInitialLayout = async (): Promise<void> => {
         const layout: LayoutSpec | null = typedModel.get("graph_layout");
         if (layout && layout.name) {
@@ -121,6 +271,9 @@ const render: Render<WidgetModel> = ({ model, el }) => {
     void (async () => {
         await loadGraph();
         applyStyles();
+        applyNodeGroupingFromModel();
+        applyEdgeGroupingFromModel();
+        applyPendingOps();
         await runInitialLayout();
     })();
 
@@ -128,6 +281,9 @@ const render: Render<WidgetModel> = ({ model, el }) => {
     typedModel.on("change:graph_data", () => void loadGraph());
     typedModel.on("change:style_rules", applyStyles);
     typedModel.on("change:graph_layout", () => void runInitialLayout());
+    typedModel.on("change:node_grouping", applyNodeGroupingFromModel);
+    typedModel.on("change:edge_grouping", applyEdgeGroupingFromModel);
+    typedModel.on("change:_pending_ops", applyPendingOps);
     typedModel.on("change:height", () => {
         applyHeight();
         ogma.view.forceResize();
@@ -143,14 +299,6 @@ const render: Render<WidgetModel> = ({ model, el }) => {
         if (msg.type === "run_layout") {
             const { name, options } = msg as RunLayoutMessage;
             void runLayout(ogma, name, options ?? {});
-        } else if (msg.type === "group_nodes") {
-            const { key } = msg as GroupNodesMessage;
-            void applyGrouping(ogma, key, nodeGrouping).then((handle) => {
-                nodeGrouping = handle;
-            });
-        } else if (msg.type === "ungroup_nodes") {
-            void removeGrouping(nodeGrouping);
-            nodeGrouping = null;
         }
     });
 

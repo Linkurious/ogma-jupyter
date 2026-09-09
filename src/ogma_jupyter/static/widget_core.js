@@ -153,6 +153,104 @@ async function removeGrouping(grouping) {
     console.error("[ogma-jupyter] Ungrouping failed:", error);
   }
 }
+function toNumberOrNull(value) {
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+function reduceAggregate(spec, values) {
+  switch (spec.op) {
+    case "count":
+      return values.length;
+    case "collect":
+      return values;
+    case "first":
+      return values.length > 0 ? values[0] : null;
+    case "last":
+      return values.length > 0 ? values[values.length - 1] : null;
+    case "sum": {
+      let acc = 0;
+      for (const v of values) {
+        const n = toNumberOrNull(v);
+        if (n !== null) acc += n;
+      }
+      return acc;
+    }
+    case "min":
+    case "max":
+    case "avg": {
+      const nums = [];
+      for (const v of values) {
+        const n = toNumberOrNull(v);
+        if (n !== null) nums.push(n);
+      }
+      if (nums.length === 0) return null;
+      if (spec.op === "min") return Math.min(...nums);
+      if (spec.op === "max") return Math.max(...nums);
+      return nums.reduce((a, b) => a + b, 0) / nums.length;
+    }
+  }
+}
+async function applyEdgeGrouping(ogma, options, previous) {
+  await removeEdgeGrouping(previous);
+  const {
+    key,
+    selectorKey,
+    dataAggregate,
+    separateEdgesByDirection,
+    enabled
+  } = options ?? {};
+  const keyPath = key ? toDataPath(key) : null;
+  const selectorPath = selectorKey ? toDataPath(selectorKey) : null;
+  const keyField = keyPath ? keyPath[keyPath.length - 1] : void 0;
+  const aggregate = { ...dataAggregate ?? {} };
+  if (!("count" in aggregate)) {
+    aggregate.count = { op: "count" };
+  }
+  const aggregateEntries = Object.entries(aggregate);
+  try {
+    const grouping = ogma.transformations.addEdgeGrouping({
+      ...selectorPath ? { selector: (edge) => Boolean(edge.getData(selectorPath)) } : {},
+      ...keyPath ? {
+        groupIdFunction: (edge) => {
+          const value = edge.getData(keyPath);
+          return value === void 0 || value === null ? void 0 : String(value);
+        }
+      } : {},
+      generator: (edges, groupId) => {
+        const data = {
+          subEdges: edges.getId()
+        };
+        if (keyField) {
+          const values = edges.getData(keyPath);
+          data[keyField] = Array.isArray(values) ? values[0] : values;
+        }
+        for (const [outKey, spec] of aggregateEntries) {
+          const values = "field" in spec && spec.field ? edges.getData(toDataPath(spec.field)) : edges.getId();
+          data[outKey] = reduceAggregate(spec, values);
+        }
+        return {
+          data,
+          attributes: { text: groupId }
+        };
+      },
+      ...separateEdgesByDirection !== void 0 ? { separateEdgesByDirection } : {},
+      ...enabled !== void 0 ? { enabled } : {}
+    });
+    await grouping.whenApplied();
+    return grouping;
+  } catch (error) {
+    console.error("[ogma-jupyter] Edge grouping failed:", error);
+    return null;
+  }
+}
+async function removeEdgeGrouping(grouping) {
+  if (!grouping) return;
+  try {
+    await grouping.destroy();
+  } catch (error) {
+    console.error("[ogma-jupyter] Edge ungrouping failed:", error);
+  }
+}
 
 // js/src/serialize.ts
 function isOgmaElement(value) {
@@ -253,6 +351,33 @@ var render = ({ model, el }) => {
     el.style.minHeight = height;
   };
   applyHeight();
+  if (!document.getElementById("ogma-jupyter-styles")) {
+    const style = document.createElement("style");
+    style.id = "ogma-jupyter-styles";
+    style.textContent = `
+.ogma-jupyter-tooltip {
+    background: rgba(30, 30, 40, 0.92);
+    color: #f6f8fa;
+    padding: 6px 10px;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 320px;
+    word-break: break-word;
+    pointer-events: none;
+}
+.ogma-jupyter-tooltip b { color: #ffd166; }
+.ogma-jupyter-tooltip pre {
+    margin: 4px 0 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap;
+}
+`;
+    document.head.appendChild(style);
+  }
   if (typeof Ogma === "undefined") {
     el.style.display = "flex";
     el.style.alignItems = "center";
@@ -269,6 +394,7 @@ var render = ({ model, el }) => {
   const ogma = new Ogma({ container: el });
   let styleRuleHandles = [];
   let nodeGrouping = null;
+  let edgeGrouping = null;
   const eventBridge = createEventBridge(ogma, typedModel);
   let lastWidth = 0;
   let lastHeight = 0;
@@ -300,6 +426,85 @@ var render = ({ model, el }) => {
       styleRuleHandles
     );
   };
+  const applyNodeGroupingFromModel = () => {
+    const spec = typedModel.get("node_grouping");
+    if (!spec) {
+      void removeGrouping(nodeGrouping);
+      nodeGrouping = null;
+      return;
+    }
+    void applyGrouping(ogma, spec.key, nodeGrouping).then((handle) => {
+      nodeGrouping = handle;
+    });
+  };
+  const applyEdgeGroupingFromModel = () => {
+    const spec = typedModel.get("edge_grouping");
+    if (!spec) {
+      void removeEdgeGrouping(edgeGrouping);
+      edgeGrouping = null;
+      return;
+    }
+    void applyEdgeGrouping(
+      ogma,
+      spec,
+      edgeGrouping
+    ).then((handle) => {
+      edgeGrouping = handle;
+    });
+  };
+  let appliedOpSeq = 0;
+  let pendingOpsQueue = Promise.resolve();
+  const applyPendingOps = () => {
+    pendingOpsQueue = pendingOpsQueue.then(async () => {
+      const ops = typedModel.get("_pending_ops") ?? [];
+      for (const op of ops) {
+        if (op.seq <= appliedOpSeq) continue;
+        try {
+          if (op.kind === "add_nodes") {
+            await ogma.addNodes(op.nodes);
+          } else if (op.kind === "add_edges") {
+            await ogma.addEdges(op.edges);
+          } else if (op.kind === "add_graph") {
+            await ogma.addGraph(op.graph);
+          }
+        } catch (err) {
+          console.error("[ogma-jupyter] pending op failed:", op, err);
+        }
+        appliedOpSeq = op.seq;
+      }
+    });
+  };
+  const HTML_ESCAPES = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  };
+  const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c] ?? c);
+  const renderTemplate = (tmpl, ctx) => tmpl.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, path) => {
+    let cur = ctx;
+    for (const key of path.split(".")) {
+      if (cur == null || typeof cur !== "object") return "";
+      cur = cur[key];
+    }
+    if (cur == null) return "";
+    const s = typeof cur === "object" ? JSON.stringify(cur, null, 2) : String(cur);
+    return escapeHtml(s);
+  });
+  ogma.tools.tooltip.onNodeHover(
+    (node) => {
+      const spec = typedModel.get("node_tooltip");
+      if (!spec) return "";
+      const data = node.getData() ?? {};
+      const ctx = { id: node.getId(), ...data };
+      if (spec === true) {
+        return `<b>${escapeHtml(String(ctx.id))}</b><pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+      }
+      return renderTemplate(spec, ctx);
+    },
+    { className: "ogma-jupyter-tooltip" }
+  );
   const runInitialLayout = async () => {
     const layout = typedModel.get("graph_layout");
     if (layout && layout.name) {
@@ -310,11 +515,17 @@ var render = ({ model, el }) => {
   void (async () => {
     await loadGraph();
     applyStyles();
+    applyNodeGroupingFromModel();
+    applyEdgeGroupingFromModel();
+    applyPendingOps();
     await runInitialLayout();
   })();
   typedModel.on("change:graph_data", () => void loadGraph());
   typedModel.on("change:style_rules", applyStyles);
   typedModel.on("change:graph_layout", () => void runInitialLayout());
+  typedModel.on("change:node_grouping", applyNodeGroupingFromModel);
+  typedModel.on("change:edge_grouping", applyEdgeGroupingFromModel);
+  typedModel.on("change:_pending_ops", applyPendingOps);
   typedModel.on("change:height", () => {
     applyHeight();
     ogma.view.forceResize();
@@ -329,14 +540,6 @@ var render = ({ model, el }) => {
     if (msg.type === "run_layout") {
       const { name, options } = msg;
       void runLayout(ogma, name, options ?? {});
-    } else if (msg.type === "group_nodes") {
-      const { key } = msg;
-      void applyGrouping(ogma, key, nodeGrouping).then((handle) => {
-        nodeGrouping = handle;
-      });
-    } else if (msg.type === "ungroup_nodes") {
-      void removeGrouping(nodeGrouping);
-      nodeGrouping = null;
     }
   });
   return () => {

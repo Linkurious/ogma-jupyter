@@ -45,21 +45,43 @@ export interface RunLayoutMessage {
     options?: Record<string, unknown>;
 }
 
-// Group nodes sharing the value at `key` into a single meta-node.
-export interface GroupNodesMessage {
-    type: "group_nodes";
+// Active node-grouping spec (synced traitlet). null means "no grouping".
+export interface NodeGroupingSpec {
     key: string;
 }
 
-// Remove any active node grouping.
-export interface UngroupNodesMessage {
-    type: "ungroup_nodes";
+// Active edge-grouping spec (synced traitlet); see EdgeGroupingOptions in
+// grouping.ts. null means "no grouping".
+export interface EdgeGroupingSpec {
+    key?: string;
+    selectorKey?: string;
+    dataAggregate?: Record<string, unknown>;
+    separateEdgesByDirection?: boolean;
+    enabled?: boolean;
 }
+
+// Entries appended to the `_pending_ops` traitlet by OgmaWidget.add_nodes(),
+// add_edges() and add_graph(). Each carries a monotonic `seq` so the frontend
+// can pick up only what it hasn't applied yet.
+export interface PendingOpBase {
+    seq: number;
+}
+export interface AddNodesOp extends PendingOpBase {
+    kind: "add_nodes";
+    nodes: RawGraph["nodes"];
+}
+export interface AddEdgesOp extends PendingOpBase {
+    kind: "add_edges";
+    edges: RawGraph["edges"];
+}
+export interface AddGraphOp extends PendingOpBase {
+    kind: "add_graph";
+    graph: RawGraph;
+}
+export type PendingOp = AddNodesOp | AddEdgesOp | AddGraphOp;
 
 export type CustomMessage =
     | RunLayoutMessage
-    | GroupNodesMessage
-    | UngroupNodesMessage
     | { type: string; [key: string]: unknown };
 
 // Synced traitlets exposed by OgmaWidget (see src/ogma_jupyter/widget.py).
@@ -73,6 +95,16 @@ export interface WidgetModel {
     // Names of Ogma events (see ogma.events.on) Python currently wants to
     // receive, kept in sync by OgmaWidget.on()/off().
     event_subscriptions: string[];
+    // Active node grouping (see OgmaWidget.group_nodes) or null.
+    node_grouping: NodeGroupingSpec | null;
+    // Active edge grouping (see OgmaWidget.group_edges) or null.
+    edge_grouping: EdgeGroupingSpec | null;
+    // Append-only queue of add_nodes/add_edges/add_graph mutations. The
+    // frontend tracks which `seq` values it has already applied.
+    _pending_ops: PendingOp[];
+    // Node hover tooltip: null=off, true=default template (id + JSON data),
+    // string=HTML template with {{path.to.field}} placeholders.
+    node_tooltip: boolean | string | null;
 }
 
 export type OgmaModel = AnyModel<WidgetModel>;

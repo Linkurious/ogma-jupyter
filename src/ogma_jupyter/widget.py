@@ -331,6 +331,36 @@ def _check_graph_data(data: Any) -> None:
             raise OgmaDataError(f"Each edge must have a 'target' key, missing at index {i}")
 
 
+def _check_nodes(nodes: Any) -> None:
+    """Validate a list of nodes for add_nodes()/add_graph()."""
+    if not isinstance(nodes, list):
+        raise OgmaDataError(
+            f"nodes must be a list, got {type(nodes).__name__}"
+        )
+    for i, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            raise OgmaDataError(
+                f"Each node must be a dict, got {type(node).__name__} at index {i}"
+            )
+
+
+def _check_edges(edges: Any) -> None:
+    """Validate a list of edges for add_edges()/add_graph()."""
+    if not isinstance(edges, list):
+        raise OgmaDataError(
+            f"edges must be a list, got {type(edges).__name__}"
+        )
+    for i, edge in enumerate(edges):
+        if not isinstance(edge, dict):
+            raise OgmaDataError(
+                f"Each edge must be a dict, got {type(edge).__name__} at index {i}"
+            )
+        if "source" not in edge:
+            raise OgmaDataError(f"Each edge must have a 'source' key, missing at index {i}")
+        if "target" not in edge:
+            raise OgmaDataError(f"Each edge must have a 'target' key, missing at index {i}")
+
+
 class OgmaWidget(anywidget.AnyWidget):
     """Interactive Ogma graph visualization widget for Jupyter notebooks.
 
@@ -394,6 +424,30 @@ class OgmaWidget(anywidget.AnyWidget):
     # side syncs its ogma.events.on()/off() calls to match this list. Populated
     # by on()/off()/once(), not meant to be set directly.
     event_subscriptions = traitlets.List(traitlets.Unicode()).tag(sync=True)
+
+    # Active node grouping spec (``{"key": "data.<path>"}``) or ``None``. Kept
+    # as a synced traitlet — not a custom message — so it survives the
+    # "spec set before the widget is displayed" case, which would otherwise
+    # drop the message on the floor. Populated by group_nodes()/ungroup_nodes().
+    node_grouping = traitlets.Any(None, allow_none=True).tag(sync=True)
+
+    # Active edge grouping spec (see group_edges() for the shape) or ``None``.
+    # Synced for the same reason as ``node_grouping``. Populated by
+    # group_edges()/ungroup_edges().
+    edge_grouping = traitlets.Any(None, allow_none=True).tag(sync=True)
+
+    # Append-only queue of imperative graph mutations produced by add_nodes(),
+    # add_edges() and add_graph(). Each entry carries a monotonic ``seq`` field
+    # so the JS side can pick up only the ones it hasn't applied yet, whether
+    # they were enqueued before or after the widget was displayed.
+    _pending_ops = traitlets.List(traitlets.Dict()).tag(sync=True)
+
+    # Node hover tooltip spec. ``None`` disables it, ``True`` shows a default
+    # tooltip (node id + data as JSON) and a str is treated as an HTML template
+    # with ``{{path.to.field}}`` placeholders resolved against the node's data
+    # (``id`` maps to ``node.getId()``, everything else to ``node.getData()``).
+    # Populated by show_node_tooltip()/hide_node_tooltip().
+    node_tooltip = traitlets.Any(None, allow_none=True).tag(sync=True)
 
     def __init__(
         self,
@@ -523,11 +577,211 @@ class OgmaWidget(anywidget.AnyWidget):
         --------
         >>> widget.group_nodes(key="data.department")
         """
-        self.send({"type": "group_nodes", "key": key})
+        self.node_grouping = {"key": key}
 
     def ungroup_nodes(self) -> None:
         """Remove all node groupings."""
-        self.send({"type": "ungroup_nodes"})
+        self.node_grouping = None
+
+    def group_edges(
+        self,
+        key: Optional[str] = None,
+        selector_key: Optional[str] = None,
+        data_aggregate: Optional[Dict[str, Dict[str, Any]]] = None,
+        separate_edges_by_direction: Optional[bool] = None,
+        enabled: Optional[bool] = None,
+    ) -> None:
+        """Merge parallel edges into a single meta-edge.
+
+        Edges sharing the same source/target pair are collapsed into one
+        meta-edge via Ogma's edge-grouping transformation
+        (``ogma.transformations.addEdgeGrouping``). Calling again while an
+        edge grouping is already active replaces it (no stacking).
+
+        Ogma's ``selector``, ``groupIdFunction`` and ``generator`` options are
+        function-valued and cannot cross the widget bridge; instead, pass the
+        serialisable equivalents below and the JavaScript side builds the
+        closures. Visual attributes (width, color, ...) on the resulting
+        meta-edges are expected to be driven by style rules bound to the
+        aggregated ``data.*`` fields — the generator never writes to
+        ``attributes`` other than ``text`` (the group id).
+
+        Every meta-edge carries at least:
+
+        - ``data.subEdges``: list of merged edge ids.
+        - ``data.count``: number of merged edges (add an entry with output key
+          ``"count"`` in ``data_aggregate`` to override).
+        - ``data.<last segment of key>``: the shared ``key`` value (when
+          ``key`` is set).
+
+        Parameters
+        ----------
+        key : str, optional
+            Data-property path used to build the ``groupIdFunction``, e.g.
+            ``"data.kind"``. Edges are grouped only when they are parallel
+            *and* share this value. When omitted, all parallel edges are
+            grouped together.
+        selector_key : str, optional
+            Data-property path whose truthy value keeps an edge in the
+            grouping; edges with a falsy value are left ungrouped. Maps to
+            Ogma's ``selector``.
+        data_aggregate : dict, optional
+            Extra values to compute on the meta-edge's ``data``. Each entry
+            maps an output field name to an operation spec::
+
+                {"count":       {"op": "count"}}
+                {"totalWeight": {"op": "sum",  "field": "data.weight"}}
+                {"maxTime":     {"op": "max",  "field": "data.TIME"}}
+                {"firstKind":   {"op": "first","field": "data.kind"}}
+                {"weights":     {"op": "collect", "field": "data.weight"}}
+
+            Supported ops: ``count``, ``sum``, ``min``, ``max``, ``avg``,
+            ``first``, ``last``, ``collect``. Non-numeric values are skipped
+            for numeric ops. ``count`` and ``collect`` accept an optional
+            ``field``; the others require one.
+        separate_edges_by_direction : bool, optional
+            Forwarded to Ogma's ``separateEdgesByDirection``.
+        enabled : bool, optional
+            Forwarded to Ogma's ``enabled``.
+
+        Examples
+        --------
+        >>> widget.group_edges()  # merge parallel edges, meta-edge gets data.count
+        >>> widget.group_edges(
+        ...     key="data.kind",
+        ...     data_aggregate={"totalWeight": {"op": "sum", "field": "data.weight"}},
+        ... )
+        >>> # Then drive width from the aggregated data via a style rule:
+        >>> widget.add_style_rule(edge_attributes={
+        ...     "width": rules.slices(field="data.count",
+        ...                           values={"nbSlices": 4, "min": 1, "max": 8}),
+        ... })
+        """
+        msg: Dict[str, Any] = {}
+        if key is not None:
+            msg["key"] = key
+        if selector_key is not None:
+            msg["selectorKey"] = selector_key
+        if data_aggregate is not None:
+            msg["dataAggregate"] = {k: dict(v) for k, v in data_aggregate.items()}
+        if separate_edges_by_direction is not None:
+            msg["separateEdgesByDirection"] = separate_edges_by_direction
+        if enabled is not None:
+            msg["enabled"] = enabled
+        self.edge_grouping = msg
+
+    def ungroup_edges(self) -> None:
+        """Remove any active edge grouping."""
+        self.edge_grouping = None
+
+    def _enqueue_op(self, op: Dict[str, Any]) -> None:
+        """Append a mutation to ``_pending_ops`` with a monotonic ``seq`` tag."""
+        current = list(self._pending_ops)
+        last_seq = current[-1]["seq"] if current else 0
+        op = {"seq": last_seq + 1, **op}
+        self._pending_ops = current + [op]
+
+    def add_nodes(self, nodes: List[Dict[str, Any]]) -> None:
+        """Add nodes to the graph without touching the existing ones.
+
+        Wraps Ogma's ``ogma.addNodes(nodes)``. Safe to call before *or* after
+        the widget is displayed — each call is appended to a synced queue and
+        the frontend replays any queue entries it hasn't seen yet on next
+        render/change. This is the preferred alternative to reassigning
+        ``widget.graph_data`` for incremental growth (e.g. click-to-expand),
+        since it avoids re-sending the whole graph on every step.
+
+        Parameters
+        ----------
+        nodes : list of dict
+            Nodes in Ogma's RawGraph format (each entry needs at least an
+            ``id``; ``attributes`` and ``data`` are passed through as-is).
+
+        Examples
+        --------
+        >>> widget.add_nodes([{"id": "z", "data": {"label": "Zoe"}}])
+        """
+        _check_nodes(nodes)
+        self._enqueue_op({"kind": "add_nodes", "nodes": nodes})
+
+    def add_edges(self, edges: List[Dict[str, Any]]) -> None:
+        """Add edges to the graph without touching the existing ones.
+
+        Wraps Ogma's ``ogma.addEdges(edges)``. Same queuing semantics as
+        :meth:`add_nodes`. All ``source``/``target`` ids must already exist in
+        the graph (either from the initial ``graph_data`` or from a prior
+        :meth:`add_nodes` call), otherwise Ogma raises on the JS side.
+
+        Parameters
+        ----------
+        edges : list of dict
+            Edges in Ogma's RawGraph format (each entry needs ``source`` and
+            ``target``; ``id`` and ``data`` are passed through as-is).
+
+        Examples
+        --------
+        >>> widget.add_edges([{"id": "e10", "source": "a", "target": "z"}])
+        """
+        _check_edges(edges)
+        self._enqueue_op({"kind": "add_edges", "edges": edges})
+
+    def add_graph(self, graph: Dict[str, Any]) -> None:
+        """Add both nodes and edges in a single atomic step.
+
+        Wraps Ogma's ``ogma.addGraph(graph)``. Semantically equivalent to
+        ``add_nodes(graph["nodes"])`` followed by ``add_edges(graph["edges"])``,
+        but applied as a single Ogma call so any edge whose endpoints are among
+        the just-added nodes is accepted.
+
+        Parameters
+        ----------
+        graph : dict
+            ``{"nodes": [...], "edges": [...]}`` in Ogma's RawGraph format.
+
+        Examples
+        --------
+        >>> widget.add_graph({
+        ...     "nodes": [{"id": "z"}],
+        ...     "edges": [{"id": "e10", "source": "a", "target": "z"}],
+        ... })
+        """
+        _check_graph_data(graph)
+        graph = _normalize_graph_data(graph)
+        self._enqueue_op({"kind": "add_graph", "graph": graph})
+
+    def show_node_tooltip(self, template: Any = True) -> None:
+        """Show a floating tooltip when hovering a node.
+
+        Wraps Ogma's ``ogma.tools.tooltip.onNodeHover``.
+
+        Parameters
+        ----------
+        template : bool or str, default ``True``
+            ``True`` uses a built-in template that renders the node id and its
+            ``data`` payload as pretty-printed JSON. A str is treated as an
+            HTML template with ``{{path.to.field}}`` placeholders resolved
+            against ``{"id": node.getId(), **node.getData()}``. Substituted
+            values are HTML-escaped; the template itself is not, so you can
+            use tags like ``<b>``/``<br>`` freely.
+
+        Examples
+        --------
+        >>> widget.show_node_tooltip()  # id + full data as JSON
+        >>> widget.show_node_tooltip("<b>{{id}}</b><br>role: {{role}}")
+        """
+        if template is False or template is None:
+            self.node_tooltip = None
+            return
+        if template is not True and not isinstance(template, str):
+            raise OgmaDataError(
+                "template must be True, None, False, or a str, "
+                f"got {type(template).__name__}"
+            )
+        self.node_tooltip = template
+
+    def hide_node_tooltip(self) -> None:
+        """Remove any active node hover tooltip."""
+        self.node_tooltip = None
 
     def on(self, event_name: str, handler: Callable[[Dict[str, Any]], None]) -> None:
         """Subscribe to an Ogma event and receive its payload in Python.
