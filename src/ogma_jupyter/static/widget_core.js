@@ -351,6 +351,33 @@ var render = ({ model, el }) => {
     el.style.minHeight = height;
   };
   applyHeight();
+  if (!document.getElementById("ogma-jupyter-styles")) {
+    const style = document.createElement("style");
+    style.id = "ogma-jupyter-styles";
+    style.textContent = `
+.ogma-jupyter-tooltip {
+    background: rgba(30, 30, 40, 0.92);
+    color: #f6f8fa;
+    padding: 6px 10px;
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+    font: 12px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+    max-width: 320px;
+    word-break: break-word;
+    pointer-events: none;
+}
+.ogma-jupyter-tooltip b { color: #ffd166; }
+.ogma-jupyter-tooltip pre {
+    margin: 4px 0 0;
+    padding: 0;
+    background: transparent;
+    color: inherit;
+    font: 11px/1.35 ui-monospace, SFMono-Regular, Menlo, monospace;
+    white-space: pre-wrap;
+}
+`;
+    document.head.appendChild(style);
+  }
   if (typeof Ogma === "undefined") {
     el.style.display = "flex";
     el.style.alignItems = "center";
@@ -447,6 +474,37 @@ var render = ({ model, el }) => {
       }
     });
   };
+  const HTML_ESCAPES = {
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  };
+  const escapeHtml = (s) => s.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c] ?? c);
+  const renderTemplate = (tmpl, ctx) => tmpl.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, path) => {
+    let cur = ctx;
+    for (const key of path.split(".")) {
+      if (cur == null || typeof cur !== "object") return "";
+      cur = cur[key];
+    }
+    if (cur == null) return "";
+    const s = typeof cur === "object" ? JSON.stringify(cur, null, 2) : String(cur);
+    return escapeHtml(s);
+  });
+  ogma.tools.tooltip.onNodeHover(
+    (node) => {
+      const spec = typedModel.get("node_tooltip");
+      if (!spec) return "";
+      const data = node.getData() ?? {};
+      const ctx = { id: node.getId(), ...data };
+      if (spec === true) {
+        return `<b>${escapeHtml(String(ctx.id))}</b><pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>`;
+      }
+      return renderTemplate(spec, ctx);
+    },
+    { className: "ogma-jupyter-tooltip" }
+  );
   const runInitialLayout = async () => {
     const layout = typedModel.get("graph_layout");
     if (layout && layout.name) {

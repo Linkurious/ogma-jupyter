@@ -442,6 +442,13 @@ class OgmaWidget(anywidget.AnyWidget):
     # they were enqueued before or after the widget was displayed.
     _pending_ops = traitlets.List(traitlets.Dict()).tag(sync=True)
 
+    # Node hover tooltip spec. ``None`` disables it, ``True`` shows a default
+    # tooltip (node id + data as JSON) and a str is treated as an HTML template
+    # with ``{{path.to.field}}`` placeholders resolved against the node's data
+    # (``id`` maps to ``node.getId()``, everything else to ``node.getData()``).
+    # Populated by show_node_tooltip()/hide_node_tooltip().
+    node_tooltip = traitlets.Any(None, allow_none=True).tag(sync=True)
+
     def __init__(
         self,
         graph_data: Optional[Dict] = None,
@@ -741,6 +748,40 @@ class OgmaWidget(anywidget.AnyWidget):
         _check_graph_data(graph)
         graph = _normalize_graph_data(graph)
         self._enqueue_op({"kind": "add_graph", "graph": graph})
+
+    def show_node_tooltip(self, template: Any = True) -> None:
+        """Show a floating tooltip when hovering a node.
+
+        Wraps Ogma's ``ogma.tools.tooltip.onNodeHover``.
+
+        Parameters
+        ----------
+        template : bool or str, default ``True``
+            ``True`` uses a built-in template that renders the node id and its
+            ``data`` payload as pretty-printed JSON. A str is treated as an
+            HTML template with ``{{path.to.field}}`` placeholders resolved
+            against ``{"id": node.getId(), **node.getData()}``. Substituted
+            values are HTML-escaped; the template itself is not, so you can
+            use tags like ``<b>``/``<br>`` freely.
+
+        Examples
+        --------
+        >>> widget.show_node_tooltip()  # id + full data as JSON
+        >>> widget.show_node_tooltip("<b>{{id}}</b><br>role: {{role}}")
+        """
+        if template is False or template is None:
+            self.node_tooltip = None
+            return
+        if template is not True and not isinstance(template, str):
+            raise OgmaDataError(
+                "template must be True, None, False, or a str, "
+                f"got {type(template).__name__}"
+            )
+        self.node_tooltip = template
+
+    def hide_node_tooltip(self) -> None:
+        """Remove any active node hover tooltip."""
+        self.node_tooltip = None
 
     def on(self, event_name: str, handler: Callable[[Dict[str, Any]], None]) -> None:
         """Subscribe to an Ogma event and receive its payload in Python.

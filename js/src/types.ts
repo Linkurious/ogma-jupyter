@@ -102,6 +102,9 @@ export interface WidgetModel {
     // Append-only queue of add_nodes/add_edges/add_graph mutations. The
     // frontend tracks which `seq` values it has already applied.
     _pending_ops: PendingOp[];
+    // Node hover tooltip: null=off, true=default template (id + JSON data),
+    // string=HTML template with {{path.to.field}} placeholders.
+    node_tooltip: boolean | string | null;
 }
 
 export type OgmaModel = AnyModel<WidgetModel>;
