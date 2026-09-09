@@ -331,6 +331,36 @@ def _check_graph_data(data: Any) -> None:
             raise OgmaDataError(f"Each edge must have a 'target' key, missing at index {i}")
 
 
+def _check_nodes(nodes: Any) -> None:
+    """Validate a list of nodes for add_nodes()/add_graph()."""
+    if not isinstance(nodes, list):
+        raise OgmaDataError(
+            f"nodes must be a list, got {type(nodes).__name__}"
+        )
+    for i, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            raise OgmaDataError(
+                f"Each node must be a dict, got {type(node).__name__} at index {i}"
+            )
+
+
+def _check_edges(edges: Any) -> None:
+    """Validate a list of edges for add_edges()/add_graph()."""
+    if not isinstance(edges, list):
+        raise OgmaDataError(
+            f"edges must be a list, got {type(edges).__name__}"
+        )
+    for i, edge in enumerate(edges):
+        if not isinstance(edge, dict):
+            raise OgmaDataError(
+                f"Each edge must be a dict, got {type(edge).__name__} at index {i}"
+            )
+        if "source" not in edge:
+            raise OgmaDataError(f"Each edge must have a 'source' key, missing at index {i}")
+        if "target" not in edge:
+            raise OgmaDataError(f"Each edge must have a 'target' key, missing at index {i}")
+
+
 class OgmaWidget(anywidget.AnyWidget):
     """Interactive Ogma graph visualization widget for Jupyter notebooks.
 
@@ -405,6 +435,12 @@ class OgmaWidget(anywidget.AnyWidget):
     # Synced for the same reason as ``node_grouping``. Populated by
     # group_edges()/ungroup_edges().
     edge_grouping = traitlets.Any(None, allow_none=True).tag(sync=True)
+
+    # Append-only queue of imperative graph mutations produced by add_nodes(),
+    # add_edges() and add_graph(). Each entry carries a monotonic ``seq`` field
+    # so the JS side can pick up only the ones it hasn't applied yet, whether
+    # they were enqueued before or after the widget was displayed.
+    _pending_ops = traitlets.List(traitlets.Dict()).tag(sync=True)
 
     def __init__(
         self,
@@ -630,6 +666,81 @@ class OgmaWidget(anywidget.AnyWidget):
     def ungroup_edges(self) -> None:
         """Remove any active edge grouping."""
         self.edge_grouping = None
+
+    def _enqueue_op(self, op: Dict[str, Any]) -> None:
+        """Append a mutation to ``_pending_ops`` with a monotonic ``seq`` tag."""
+        current = list(self._pending_ops)
+        last_seq = current[-1]["seq"] if current else 0
+        op = {"seq": last_seq + 1, **op}
+        self._pending_ops = current + [op]
+
+    def add_nodes(self, nodes: List[Dict[str, Any]]) -> None:
+        """Add nodes to the graph without touching the existing ones.
+
+        Wraps Ogma's ``ogma.addNodes(nodes)``. Safe to call before *or* after
+        the widget is displayed — each call is appended to a synced queue and
+        the frontend replays any queue entries it hasn't seen yet on next
+        render/change. This is the preferred alternative to reassigning
+        ``widget.graph_data`` for incremental growth (e.g. click-to-expand),
+        since it avoids re-sending the whole graph on every step.
+
+        Parameters
+        ----------
+        nodes : list of dict
+            Nodes in Ogma's RawGraph format (each entry needs at least an
+            ``id``; ``attributes`` and ``data`` are passed through as-is).
+
+        Examples
+        --------
+        >>> widget.add_nodes([{"id": "z", "data": {"label": "Zoe"}}])
+        """
+        _check_nodes(nodes)
+        self._enqueue_op({"kind": "add_nodes", "nodes": nodes})
+
+    def add_edges(self, edges: List[Dict[str, Any]]) -> None:
+        """Add edges to the graph without touching the existing ones.
+
+        Wraps Ogma's ``ogma.addEdges(edges)``. Same queuing semantics as
+        :meth:`add_nodes`. All ``source``/``target`` ids must already exist in
+        the graph (either from the initial ``graph_data`` or from a prior
+        :meth:`add_nodes` call), otherwise Ogma raises on the JS side.
+
+        Parameters
+        ----------
+        edges : list of dict
+            Edges in Ogma's RawGraph format (each entry needs ``source`` and
+            ``target``; ``id`` and ``data`` are passed through as-is).
+
+        Examples
+        --------
+        >>> widget.add_edges([{"id": "e10", "source": "a", "target": "z"}])
+        """
+        _check_edges(edges)
+        self._enqueue_op({"kind": "add_edges", "edges": edges})
+
+    def add_graph(self, graph: Dict[str, Any]) -> None:
+        """Add both nodes and edges in a single atomic step.
+
+        Wraps Ogma's ``ogma.addGraph(graph)``. Semantically equivalent to
+        ``add_nodes(graph["nodes"])`` followed by ``add_edges(graph["edges"])``,
+        but applied as a single Ogma call so any edge whose endpoints are among
+        the just-added nodes is accepted.
+
+        Parameters
+        ----------
+        graph : dict
+            ``{"nodes": [...], "edges": [...]}`` in Ogma's RawGraph format.
+
+        Examples
+        --------
+        >>> widget.add_graph({
+        ...     "nodes": [{"id": "z"}],
+        ...     "edges": [{"id": "e10", "source": "a", "target": "z"}],
+        ... })
+        """
+        _check_graph_data(graph)
+        graph = _normalize_graph_data(graph)
+        self._enqueue_op({"kind": "add_graph", "graph": graph})
 
     def on(self, event_name: str, handler: Callable[[Dict[str, Any]], None]) -> None:
         """Subscribe to an Ogma event and receive its payload in Python.

@@ -425,6 +425,28 @@ var render = ({ model, el }) => {
       edgeGrouping = handle;
     });
   };
+  let appliedOpSeq = 0;
+  let pendingOpsQueue = Promise.resolve();
+  const applyPendingOps = () => {
+    pendingOpsQueue = pendingOpsQueue.then(async () => {
+      const ops = typedModel.get("_pending_ops") ?? [];
+      for (const op of ops) {
+        if (op.seq <= appliedOpSeq) continue;
+        try {
+          if (op.kind === "add_nodes") {
+            await ogma.addNodes(op.nodes);
+          } else if (op.kind === "add_edges") {
+            await ogma.addEdges(op.edges);
+          } else if (op.kind === "add_graph") {
+            await ogma.addGraph(op.graph);
+          }
+        } catch (err) {
+          console.error("[ogma-jupyter] pending op failed:", op, err);
+        }
+        appliedOpSeq = op.seq;
+      }
+    });
+  };
   const runInitialLayout = async () => {
     const layout = typedModel.get("graph_layout");
     if (layout && layout.name) {
@@ -437,6 +459,7 @@ var render = ({ model, el }) => {
     applyStyles();
     applyNodeGroupingFromModel();
     applyEdgeGroupingFromModel();
+    applyPendingOps();
     await runInitialLayout();
   })();
   typedModel.on("change:graph_data", () => void loadGraph());
@@ -444,6 +467,7 @@ var render = ({ model, el }) => {
   typedModel.on("change:graph_layout", () => void runInitialLayout());
   typedModel.on("change:node_grouping", applyNodeGroupingFromModel);
   typedModel.on("change:edge_grouping", applyEdgeGroupingFromModel);
+  typedModel.on("change:_pending_ops", applyPendingOps);
   typedModel.on("change:height", () => {
     applyHeight();
     ogma.view.forceResize();

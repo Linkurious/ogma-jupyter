@@ -60,6 +60,26 @@ export interface EdgeGroupingSpec {
     enabled?: boolean;
 }
 
+// Entries appended to the `_pending_ops` traitlet by OgmaWidget.add_nodes(),
+// add_edges() and add_graph(). Each carries a monotonic `seq` so the frontend
+// can pick up only what it hasn't applied yet.
+export interface PendingOpBase {
+    seq: number;
+}
+export interface AddNodesOp extends PendingOpBase {
+    kind: "add_nodes";
+    nodes: RawGraph["nodes"];
+}
+export interface AddEdgesOp extends PendingOpBase {
+    kind: "add_edges";
+    edges: RawGraph["edges"];
+}
+export interface AddGraphOp extends PendingOpBase {
+    kind: "add_graph";
+    graph: RawGraph;
+}
+export type PendingOp = AddNodesOp | AddEdgesOp | AddGraphOp;
+
 export type CustomMessage =
     | RunLayoutMessage
     | { type: string; [key: string]: unknown };
@@ -79,6 +99,9 @@ export interface WidgetModel {
     node_grouping: NodeGroupingSpec | null;
     // Active edge grouping (see OgmaWidget.group_edges) or null.
     edge_grouping: EdgeGroupingSpec | null;
+    // Append-only queue of add_nodes/add_edges/add_graph mutations. The
+    // frontend tracks which `seq` values it has already applied.
+    _pending_ops: PendingOp[];
 }
 
 export type OgmaModel = AnyModel<WidgetModel>;
