@@ -87,7 +87,6 @@ export type CustomMessage =
 // Synced traitlets exposed by OgmaWidget (see src/ogma_jupyter/widget.py).
 export interface WidgetModel {
     graph_data: RawGraph;
-    _license_key: string;
     style_rules: StyleRuleSpec[];
     graph_layout: LayoutSpec | null;
     // Widget container height in pixels (see OgmaWidget.height in widget.py).

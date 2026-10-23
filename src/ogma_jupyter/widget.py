@@ -408,8 +408,9 @@ class OgmaWidget(anywidget.AnyWidget):
     # Graph data in Ogma's RawGraph format
     graph_data = traitlets.Any({"nodes": [], "edges": []}).tag(sync=True)
 
-    # License key passed to Ogma({license: key}) in JS
-    _license_key = traitlets.Unicode("").tag(sync=True)
+    # License key, kept kernel-side only. Not synced to the browser: the frontend
+    # never uses it, and syncing would expose the key in widget state.
+    _license_key = traitlets.Unicode("")
 
     # Style rules: list of dicts with nodeAttributes / edgeAttributes
     style_rules = traitlets.Any([]).tag(sync=True)

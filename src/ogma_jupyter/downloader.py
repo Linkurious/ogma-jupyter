@@ -7,6 +7,7 @@ bundle.
 """
 
 import io
+import os
 import tarfile
 import urllib.error
 import urllib.request
@@ -14,7 +15,7 @@ import warnings
 from pathlib import Path
 from typing import Optional
 
-from .errors import OgmaLicenseError
+from .errors import OgmaError, OgmaLicenseError
 
 # Ogma version to download — keep in sync with package.json
 OGMA_VERSION = "6.0.5"
@@ -27,8 +28,16 @@ OGMA_VERSION = "6.0.5"
 BUNDLE_FORMAT_VERSION = 2
 BUNDLE_FORMAT_MARKER = f"// ogma-jupyter bundle-format v{BUNDLE_FORMAT_VERSION}"
 
-# Local cache directory for the downloaded Ogma JS bundle
-CACHE_DIR = Path.home() / ".cache" / "ogma_jupyter"
+# Local cache directory for the downloaded Ogma JS bundle. Override with
+# OGMA_CACHE_DIR (e.g. a Databricks Volume or a path that persists across clusters).
+CACHE_DIR = (
+    Path(os.environ["OGMA_CACHE_DIR"]).expanduser()
+    if os.environ.get("OGMA_CACHE_DIR")
+    else Path.home() / ".cache" / "ogma_jupyter"
+)
+
+# Seconds to wait for the Ogma download before failing.
+DOWNLOAD_TIMEOUT_SECONDS = 60
 
 # Distribution URL — {version} and {license_key} are substituted at download
 # time. The endpoint returns the Ogma npm package as a gzip-compressed tarball.
@@ -252,7 +261,7 @@ def download_ogma(license_key: str) -> Path:
     url = OGMA_DOWNLOAD_URL.format(version=OGMA_VERSION, license_key=license_key)
 
     try:
-        with urllib.request.urlopen(url) as response:
+        with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT_SECONDS) as response:
             archive_data = response.read()
     except urllib.error.HTTPError as e:
         if e.code in (401, 403):
@@ -261,6 +270,18 @@ def download_ogma(license_key: str) -> Path:
                 f"Get your license key at https://get.linkurio.us/"
             ) from e
         raise
+    except urllib.error.URLError as e:
+        raise OgmaError(
+            f"Could not reach get.linkurio.us to download Ogma ({e.reason}). "
+            f"Check network egress, or use og.set_library_path() with a local "
+            f"Ogma build."
+        ) from e
+    except TimeoutError as e:
+        raise OgmaError(
+            f"Timed out after {DOWNLOAD_TIMEOUT_SECONDS}s downloading Ogma from "
+            f"get.linkurio.us. Check network egress, or use og.set_library_path() "
+            f"with a local Ogma build."
+        ) from e
 
     with tarfile.open(fileobj=io.BytesIO(archive_data), mode="r:gz") as tf:
         member = tf.extractfile(OGMA_JS_PATH_IN_ARCHIVE)
