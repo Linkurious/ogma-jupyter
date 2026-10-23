@@ -50,6 +50,11 @@ class TestSetLicense:
         w = OgmaWidget()
         assert w._license_key == ""
 
+    def test_license_key_is_not_synced_to_frontend(self):
+        w = OgmaWidget(license_key="secret-key")
+        assert w._license_key == "secret-key"
+        assert "_license_key" not in w.get_state()
+
 
 # ---------------------------------------------------------------------------
 # Widget instantiation

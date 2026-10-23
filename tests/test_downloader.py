@@ -1,6 +1,8 @@
 """Tests for the Ogma JS downloader: HTTP fetch, cache, widget.js assembly."""
 
 import os
+import subprocess
+import sys
 import tarfile
 import io
 from pathlib import Path
@@ -10,6 +12,7 @@ import pytest
 
 import ogma_jupyter as og
 from ogma_jupyter.downloader import (
+    DOWNLOAD_TIMEOUT_SECONDS,
     is_ogma_cached,
     download_ogma,
     assemble_widget_js,
@@ -18,7 +21,7 @@ from ogma_jupyter.downloader import (
     get_local_ogma_path,
     OGMA_VERSION,
 )
-from ogma_jupyter.errors import OgmaLicenseError
+from ogma_jupyter.errors import OgmaError, OgmaLicenseError
 
 
 # ---------------------------------------------------------------------------
@@ -124,6 +127,50 @@ class TestDownloadOgma:
 
         mock_urlopen.assert_not_called()
         assert path.read_text() == "/* cached ogma */"
+
+    def test_raises_ogma_error_on_network_failure(self, tmp_path):
+        import urllib.error
+
+        with patch("ogma_jupyter.downloader.CACHE_DIR", tmp_path), \
+             patch("ogma_jupyter.downloader.urllib.request.urlopen",
+                   side_effect=urllib.error.URLError("no route to host")):
+            with pytest.raises(OgmaError, match="OGMA_LOCAL_PATH|set_library_path"):
+                download_ogma("any-key")
+
+    def test_raises_ogma_error_on_timeout(self, tmp_path):
+        with patch("ogma_jupyter.downloader.CACHE_DIR", tmp_path), \
+             patch("ogma_jupyter.downloader.urllib.request.urlopen",
+                   side_effect=TimeoutError("timed out")):
+            with pytest.raises(OgmaError, match="Timed out"):
+                download_ogma("any-key")
+
+    def test_urlopen_is_called_with_timeout(self, tmp_path):
+        fake_tgz = make_fake_ogma_tgz()
+        mock_response = MagicMock()
+        mock_response.read.return_value = fake_tgz
+        mock_response.__enter__ = lambda s: s
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("ogma_jupyter.downloader.CACHE_DIR", tmp_path), \
+             patch("ogma_jupyter.downloader.urllib.request.urlopen",
+                   return_value=mock_response) as mock_dl:
+            download_ogma("valid-key")
+
+        assert mock_dl.call_args.kwargs["timeout"] == DOWNLOAD_TIMEOUT_SECONDS
+
+
+class TestCacheDirOverride:
+    def test_env_var_overrides_cache_dir(self, tmp_path):
+        script = (
+            "import os; os.environ['OGMA_CACHE_DIR'] = %r;"
+            "from ogma_jupyter.downloader import CACHE_DIR;"
+            "print(CACHE_DIR)" % str(tmp_path / "ogma-cache")
+        )
+
+        out = subprocess.run(
+            [sys.executable, "-c", script], capture_output=True, text=True, check=True
+        )
+        assert out.stdout.strip().splitlines()[-1] == str(tmp_path / "ogma-cache")
 
 
 # ---------------------------------------------------------------------------
