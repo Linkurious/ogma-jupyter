@@ -246,6 +246,28 @@ def _normalize_layout_options(name: str, options: Dict[str, Any]) -> Dict[str, A
 
 
 
+def _layout_spec(layout: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
+    """Build a ``{"name", "params"}`` layout spec from a name or an options dict.
+
+    Validates the name against :data:`VALID_LAYOUTS` and normalises the options
+    the same way :meth:`OgmaWidget.run_layout` does.
+    """
+    if isinstance(layout, str):
+        name, options = layout, {}
+    elif isinstance(layout, dict) and "name" in layout:
+        options = dict(layout)
+        name = options.pop("name")
+    else:
+        raise OgmaDataError(
+            f"layout must be a name or a dict with a 'name' key, got {layout!r}"
+        )
+    if name not in VALID_LAYOUTS:
+        raise OgmaDataError(
+            f"Unknown layout '{name}'. Valid layouts: {', '.join(sorted(VALID_LAYOUTS))}"
+        )
+    return {"name": name, "params": _normalize_layout_options(name, options)}
+
+
 # Node position keys that Ogma expects inside each node's "attributes" sub-object.
 # When found at the node root they are lifted into "attributes" by
 # _normalize_graph_data so that coordinates are not silently ignored.
@@ -383,6 +405,9 @@ class OgmaWidget(anywidget.AnyWidget):
         Initial layout config, e.g. ``{"name": "force"}``.
     height : int, optional
         Widget height in pixels. Defaults to 700.
+    options : dict, optional
+        Ogma options forwarded to ``ogma.setOptions()``, e.g.
+        ``{"backgroundColor": "#08090a"}``. See :meth:`set_options`.
 
     Notes
     -----
@@ -436,6 +461,23 @@ class OgmaWidget(anywidget.AnyWidget):
     # group_edges()/ungroup_edges().
     edge_grouping = traitlets.Any(None, allow_none=True).tag(sync=True)
 
+    # Options forwarded to ``ogma.setOptions()`` (background colour,
+    # interactions, ...). Populated by the ``options`` argument / set_options().
+    ogma_options = traitlets.Dict({}).tag(sync=True)
+
+    # Global layout run by ``ogma.transformations.onGroupsUpdated`` every time
+    # the node groups change (``{"name": ..., "params": {...}}``) or ``None``.
+    # Populated by on_groups_updated().
+    groups_layout = traitlets.Any(None, allow_none=True).tag(sync=True)
+
+    # ``ogma.transformations.setAnimation`` options (``duration``/``easing``)
+    # or ``None``. Populated by set_transformation_animation().
+    transformation_animation = traitlets.Any(None, allow_none=True).tag(sync=True)
+
+    # Style classes created with ``ogma.styles.createClass``; list of
+    # ``{"name", "nodeAttributes", "edgeAttributes"}``. Populated by add_class().
+    style_classes = traitlets.List(traitlets.Dict()).tag(sync=True)
+
     # Append-only queue of imperative graph mutations produced by add_nodes(),
     # add_edges() and add_graph(). Each entry carries a monotonic ``seq`` field
     # so the JS side can pick up only the ones it hasn't applied yet, whether
@@ -454,6 +496,7 @@ class OgmaWidget(anywidget.AnyWidget):
         graph_data: Optional[Dict] = None,
         license_key: Optional[str] = None,
         height: int = 700,
+        options: Optional[Dict[str, Any]] = None,
         **kwargs: Any,
     ) -> None:
         super().__init__(**kwargs)
@@ -470,6 +513,8 @@ class OgmaWidget(anywidget.AnyWidget):
                 self._esm = bundle_source
         if graph_data is not None:
             self.graph_data = graph_data
+        if options is not None:
+            self.set_options(options)
         # Python-side handlers per event name (JS holds only one listener per
         # event name; fan-out to multiple Python callbacks happens here).
         self._event_handlers: Dict[str, List[Callable[[Dict[str, Any]], None]]] = {}
@@ -565,19 +610,127 @@ class OgmaWidget(anywidget.AnyWidget):
         options = _normalize_layout_options(name, options)
         self.send({"type": "run_layout", "name": name, "options": options})
 
-    def group_nodes(self, key: str) -> None:
-        """Group nodes by a data property path.
+    def group_nodes(
+        self,
+        key: Union[str, List[str]],
+        selector_key: Optional[str] = None,
+        id_prefix: Optional[str] = None,
+        data: Optional[Dict[str, Any]] = None,
+        data_aggregate: Optional[Dict[str, Dict[str, Any]]] = None,
+        label: Optional[str] = None,
+        edge_data_aggregate: Optional[Dict[str, Dict[str, Any]]] = None,
+        show_contents: Optional[bool] = None,
+        padding: Optional[float] = None,
+        group_layout: Optional[Union[str, Dict[str, Any]]] = None,
+        enabled: Optional[bool] = None,
+    ) -> None:
+        """Group nodes by one or more data property paths.
+
+        Wraps ``ogma.transformations.addNodeGrouping``. Nodes whose value at
+        ``key`` is missing (``None``) are left ungrouped, so a precomputed
+        "group id or ``None``" field is the simplest way to express any custom
+        grouping logic from Python. Calling again replaces the active grouping
+        — except when only ``enabled`` changes, which toggles it in place (see
+        :meth:`enable_node_grouping`).
+
+        Every meta-node carries at least ``data.groupId``, ``data.count``
+        (number of grouped nodes) and ``data.label`` (the rendered ``label``).
 
         Parameters
         ----------
-        key : str
-            Data property path to group by, e.g. ``"data.department"``.
+        key : str or list of str
+            Data property path(s) to group by, e.g. ``"data.department"``.
+            Several paths are joined with ``-`` into one group id.
+        selector_key : str, optional
+            Data-property path whose truthy value keeps a node in the grouping.
+            Maps to Ogma's ``selector``.
+        id_prefix : str, optional
+            Meta-node ids become ``f"{id_prefix}{group_id}"``, so they can be
+            recognised in event payloads. Ogma assigns ids when omitted.
+        data : dict, optional
+            Static data merged into every meta-node's ``data``.
+        data_aggregate : dict, optional
+            Aggregations over the grouped nodes, same spec as
+            :meth:`group_edges` (``count``, ``sum``, ``min``, ``max``, ``avg``,
+            ``first``, ``last``, ``collect``).
+        label : str, optional
+            Meta-node text template with ``{{groupId}}`` / ``{{<data field>}}``
+            placeholders, e.g. ``"{{count}} victims of {{groupId}}"``.
+            Defaults to the group id.
+        edge_data_aggregate : dict, optional
+            Aggregations written to the ``data`` of the meta-edges linking
+            groups to the rest of the graph (Ogma's ``edgeGenerator``).
+            ``data.count`` is always added.
+        show_contents : bool, optional
+            Forwarded to Ogma's ``showContents`` (draw the sub-nodes inside
+            their group).
+        padding : float, optional
+            Forwarded to Ogma's ``padding``.
+        group_layout : str or dict, optional
+            Layout run inside each open group (Ogma's ``onGroupUpdate``):
+            a layout name (``"grid"``) or ``{"name": "grid", **params}``.
+        enabled : bool, optional
+            Forwarded to Ogma's ``enabled``.
 
         Examples
         --------
         >>> widget.group_nodes(key="data.department")
+        >>> widget.group_nodes(
+        ...     key="data.victimOf",
+        ...     id_prefix="victims-",
+        ...     label="{{count}} victims ({{groupId}})",
+        ...     show_contents=True,
+        ...     group_layout="grid",
+        ...     enabled=False,
+        ... )
         """
-        self.node_grouping = {"key": key}
+        spec: Dict[str, Any] = {"key": list(key) if isinstance(key, (list, tuple)) else key}
+        if selector_key is not None:
+            spec["selectorKey"] = selector_key
+        if id_prefix is not None:
+            spec["idPrefix"] = id_prefix
+        if data is not None:
+            spec["data"] = dict(data)
+        if data_aggregate is not None:
+            spec["dataAggregate"] = {k: dict(v) for k, v in data_aggregate.items()}
+        if label is not None:
+            spec["label"] = label
+        if edge_data_aggregate is not None:
+            spec["edgeDataAggregate"] = {k: dict(v) for k, v in edge_data_aggregate.items()}
+        if show_contents is not None:
+            spec["showContents"] = show_contents
+        if padding is not None:
+            spec["padding"] = padding
+        if group_layout is not None:
+            spec["groupLayout"] = _layout_spec(group_layout)
+        if enabled is not None:
+            spec["enabled"] = enabled
+        self.node_grouping = spec
+
+    def enable_node_grouping(self, enabled: bool = True) -> None:
+        """Enable (or, with ``enabled=False``, disable) the active node grouping.
+
+        Mirrors the grouping transformation's ``enable()``/``disable()``: the
+        grouping keeps its options and Ogma animates the transition (see
+        :meth:`set_transformation_animation`).
+
+        Raises
+        ------
+        OgmaDataError
+            If no node grouping is active (call :meth:`group_nodes` first).
+        """
+        if self.node_grouping is None:
+            raise OgmaDataError("No active node grouping; call group_nodes() first")
+        self.node_grouping = {**self.node_grouping, "enabled": bool(enabled)}
+
+    def disable_node_grouping(self) -> None:
+        """Disable the active node grouping, keeping its options."""
+        self.enable_node_grouping(False)
+
+    @property
+    def node_grouping_enabled(self) -> bool:
+        """Whether a node grouping is active and enabled."""
+        return self.node_grouping is not None and self.node_grouping.get("enabled", True)
 
     def ungroup_nodes(self) -> None:
         """Remove all node groupings."""
@@ -585,9 +738,10 @@ class OgmaWidget(anywidget.AnyWidget):
 
     def group_edges(
         self,
-        key: Optional[str] = None,
+        key: Optional[Union[str, List[str]]] = None,
         selector_key: Optional[str] = None,
         data_aggregate: Optional[Dict[str, Dict[str, Any]]] = None,
+        label: Optional[str] = None,
         separate_edges_by_direction: Optional[bool] = None,
         enabled: Optional[bool] = None,
     ) -> None:
@@ -616,11 +770,11 @@ class OgmaWidget(anywidget.AnyWidget):
 
         Parameters
         ----------
-        key : str, optional
-            Data-property path used to build the ``groupIdFunction``, e.g.
-            ``"data.kind"``. Edges are grouped only when they are parallel
-            *and* share this value. When omitted, all parallel edges are
-            grouped together.
+        key : str or list of str, optional
+            Data-property path(s) used to build the ``groupIdFunction``, e.g.
+            ``"data.kind"`` or ``["data.kind", "data.AUTH_TYPE"]``. Edges are
+            grouped only when they are parallel *and* share these values.
+            When omitted, all parallel edges are grouped together.
         selector_key : str, optional
             Data-property path whose truthy value keeps an edge in the
             grouping; edges with a falsy value are left ungrouped. Maps to
@@ -639,6 +793,10 @@ class OgmaWidget(anywidget.AnyWidget):
             ``first``, ``last``, ``collect``. Non-numeric values are skipped
             for numeric ops. ``count`` and ``collect`` accept an optional
             ``field``; the others require one.
+        label : str, optional
+            Meta-edge text template with ``{{groupId}}`` / ``{{<data field>}}``
+            placeholders. Defaults to the group id; ``""`` leaves meta-edges
+            unlabelled.
         separate_edges_by_direction : bool, optional
             Forwarded to Ogma's ``separateEdgesByDirection``.
         enabled : bool, optional
@@ -659,11 +817,13 @@ class OgmaWidget(anywidget.AnyWidget):
         """
         msg: Dict[str, Any] = {}
         if key is not None:
-            msg["key"] = key
+            msg["key"] = list(key) if isinstance(key, (list, tuple)) else key
         if selector_key is not None:
             msg["selectorKey"] = selector_key
         if data_aggregate is not None:
             msg["dataAggregate"] = {k: dict(v) for k, v in data_aggregate.items()}
+        if label is not None:
+            msg["label"] = label
         if separate_edges_by_direction is not None:
             msg["separateEdgesByDirection"] = separate_edges_by_direction
         if enabled is not None:
@@ -673,6 +833,151 @@ class OgmaWidget(anywidget.AnyWidget):
     def ungroup_edges(self) -> None:
         """Remove any active edge grouping."""
         self.edge_grouping = None
+
+    def set_options(self, options: Dict[str, Any]) -> None:
+        """Merge ``options`` into the Ogma options (``ogma.setOptions``).
+
+        Keys are Ogma's camelCase option names; nested dicts are forwarded
+        as-is.
+
+        Examples
+        --------
+        >>> widget.set_options({
+        ...     "backgroundColor": "#08090a",
+        ...     "interactions": {"zoom": {"onDoubleClick": True}},
+        ... })
+        """
+        if not isinstance(options, dict):
+            raise OgmaDataError(f"options must be a dict, got {type(options).__name__}")
+        self.ogma_options = {**self.ogma_options, **options}
+
+    def on_groups_updated(self, name: Optional[str] = None, **options: Any) -> None:
+        """Run a layout every time the node groups change.
+
+        Mirrors ``ogma.transformations.onGroupsUpdated(() => ({layout, params}))``:
+        the layout runs after a grouping is enabled, disabled or changes
+        membership, and after :meth:`trigger_groups_updated`. Call with no
+        ``name`` to clear it.
+
+        Parameters
+        ----------
+        name : str, optional
+            Layout name, same values as :meth:`run_layout`.
+        **options
+            Layout options, same conversion and validation as
+            :meth:`run_layout`.
+
+        Examples
+        --------
+        >>> widget.on_groups_updated("force", gpu=True)
+        >>> widget.on_groups_updated("hierarchical", layer="level", level_distance=50)
+        """
+        if name is None:
+            self.groups_layout = None
+            return
+        self.groups_layout = _layout_spec({"name": name, **options})
+
+    def set_transformation_animation(
+        self,
+        duration: Optional[int] = None,
+        easing: Optional[str] = None,
+    ) -> None:
+        """Animate transformation updates (``ogma.transformations.setAnimation``).
+
+        Call with no argument to restore Ogma's default (no animation).
+
+        Examples
+        --------
+        >>> widget.set_transformation_animation(duration=200, easing="quadraticInOut")
+        """
+        spec: Dict[str, Any] = {}
+        if duration is not None:
+            spec["duration"] = duration
+        if easing is not None:
+            spec["easing"] = easing
+        self.transformation_animation = spec or None
+
+    def trigger_groups_updated(self) -> None:
+        """Re-run the :meth:`on_groups_updated` layout now.
+
+        Mirrors ``ogma.transformations.triggerGroupsUpdated()`` followed by a
+        transformation refresh, so the layout runs even when no group changed
+        (e.g. after switching it from ``force`` to ``hierarchical``).
+        """
+        self.send({"type": "trigger_groups_updated"})
+
+    def add_class(
+        self,
+        name: str,
+        node_attributes: Optional[Dict] = None,
+        edge_attributes: Optional[Dict] = None,
+    ) -> None:
+        """Declare a style class (``ogma.styles.createClass``).
+
+        Classes take precedence over style rules. Declaring an existing name
+        updates it in place. Values can be static or ``ogma_jupyter.rules``
+        descriptors, as in :meth:`add_style_rule`. Elements get the class
+        through :meth:`highlight`.
+
+        Examples
+        --------
+        >>> widget.add_class(
+        ...     "dimmed",
+        ...     node_attributes={"opacity": 0.2, "text": {"content": ""}},
+        ...     edge_attributes={"opacity": 0.2, "layer": -1},
+        ... )
+        """
+        if not name:
+            raise OgmaDataError("Class name cannot be empty")
+        if node_attributes is not None and not isinstance(node_attributes, dict):
+            raise OgmaDataError("node_attributes must be a dict")
+        if edge_attributes is not None and not isinstance(edge_attributes, dict):
+            raise OgmaDataError("edge_attributes must be a dict")
+        spec: Dict[str, Any] = {"name": name}
+        if node_attributes is not None:
+            spec["nodeAttributes"] = node_attributes
+        if edge_attributes is not None:
+            spec["edgeAttributes"] = edge_attributes
+        self.style_classes = [c for c in self.style_classes if c["name"] != name] + [spec]
+
+    def highlight(
+        self,
+        nodes: Optional[List[Any]] = None,
+        edges: Optional[List[Any]] = None,
+        class_name: str = "dimmed",
+        duration: int = 0,
+    ) -> None:
+        """Put ``class_name`` on every element except ``nodes``/``edges``.
+
+        Ids refer to raw (non-virtual) elements: a meta-node or meta-edge
+        produced by a grouping stays highlighted as soon as one of its
+        sub-elements is listed, so highlighting works the same whether a
+        grouping is enabled or not. Passing no ids clears the class.
+
+        Parameters
+        ----------
+        nodes, edges : list, optional
+            Ids of the elements to keep highlighted.
+        class_name : str, default ``"dimmed"``
+            A class declared with :meth:`add_class`.
+        duration : int, default ``0``
+            Class transition duration, in milliseconds.
+
+        Examples
+        --------
+        >>> widget.highlight(nodes=["a", "b"], edges=["e1"], duration=250)
+        """
+        self.send({
+            "type": "highlight",
+            "className": class_name,
+            "nodes": list(nodes or []),
+            "edges": list(edges or []),
+            "duration": duration,
+        })
+
+    def clear_highlight(self, class_name: str = "dimmed", duration: int = 0) -> None:
+        """Remove ``class_name`` from every element."""
+        self.highlight(class_name=class_name, duration=duration)
 
     def _enqueue_op(self, op: Dict[str, Any]) -> None:
         """Append a mutation to ``_pending_ops`` with a monotonic ``seq`` tag."""

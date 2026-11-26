@@ -1,4 +1,4 @@
-import type { StyleRule, NodeGrouping, EdgeGrouping } from "@linkurious/ogma";
+import type { StyleRule, StyleClass, NodeGrouping, EdgeGrouping } from "@linkurious/ogma";
 import type { Render } from "@anywidget/types";
 
 import { applyStyleRules } from "./styles";
@@ -8,16 +8,26 @@ import {
     removeGrouping,
     applyEdgeGrouping,
     removeEdgeGrouping,
+    setGroupingEnabled,
 } from "./grouping";
+import { applyStyleClasses, highlight } from "./classes";
+import {
+    applyGroupsLayout,
+    applyTransformationAnimation,
+    triggerGroupsUpdated,
+} from "./transformations";
 import { createEventBridge } from "./events";
 import type {
     CustomMessage,
     EdgeGroupingSpec,
+    GroupsLayoutSpec,
+    HighlightMessage,
     LayoutSpec,
     NodeGroupingSpec,
     OgmaModel,
     PendingOp,
     RunLayoutMessage,
+    TransformationAnimationSpec,
     WidgetModel,
 } from "./types";
 
@@ -96,6 +106,14 @@ const render: Render<WidgetModel> = ({ model, el }) => {
 
     const ogma = new Ogma({ container: el });
 
+    const applyOptions = (): void => {
+        const options = typedModel.get("ogma_options");
+        if (options && Object.keys(options).length > 0) {
+            ogma.setOptions(options as never);
+        }
+    };
+    applyOptions();
+
     // StyleRule handles from the most recent applyStyleRules() call, so they
     // can be destroyed and rebuilt whenever the synced rule list changes.
     let styleRuleHandles: StyleRule[] = [];
@@ -103,11 +121,19 @@ const render: Render<WidgetModel> = ({ model, el }) => {
     // Active node-grouping transformation, kept so it can be replaced or removed
     // when new group_nodes / ungroup_nodes messages arrive.
     let nodeGrouping: NodeGrouping<unknown, unknown> | null = null;
+    // Spec the active node grouping was built from, so a change of `enabled`
+    // alone toggles the grouping in place instead of rebuilding it.
+    let nodeGroupingSpec: NodeGroupingSpec | null = null;
+    // Serialises grouping updates so a quick enable → disable can't race.
+    let nodeGroupingQueue: Promise<void> = Promise.resolve();
 
     // Active edge-grouping transformation (parallel-edge merging), kept so it
     // can be replaced or removed when new group_edges / ungroup_edges messages
     // arrive.
     let edgeGrouping: EdgeGrouping<unknown, unknown> | null = null;
+
+    // Style classes declared via add_class(), keyed by name.
+    let styleClasses = new Map<string, StyleClass>();
 
     // Forwards arbitrary ogma.events.on(...) events to Python (see OgmaWidget.on()).
     const eventBridge = createEventBridge(ogma, typedModel);
@@ -152,16 +178,58 @@ const render: Render<WidgetModel> = ({ model, el }) => {
         );
     };
 
+    const sameSpecIgnoringEnabled = (
+        a: NodeGroupingSpec | null,
+        b: NodeGroupingSpec,
+    ): boolean => {
+        if (!a) return false;
+        const { enabled: _a, ...restA } = a;
+        const { enabled: _b, ...restB } = b;
+        return JSON.stringify(restA) === JSON.stringify(restB);
+    };
+
     const applyNodeGroupingFromModel = (): void => {
         const spec = typedModel.get("node_grouping") as NodeGroupingSpec | null;
-        if (!spec) {
-            void removeGrouping(nodeGrouping);
-            nodeGrouping = null;
-            return;
-        }
-        void applyGrouping(ogma, spec.key, nodeGrouping).then((handle) => {
-            nodeGrouping = handle;
+        nodeGroupingQueue = nodeGroupingQueue.then(async () => {
+            if (!spec) {
+                await removeGrouping(nodeGrouping);
+                nodeGrouping = null;
+                nodeGroupingSpec = null;
+                return;
+            }
+            if (nodeGrouping && sameSpecIgnoringEnabled(nodeGroupingSpec, spec)) {
+                await setGroupingEnabled(nodeGrouping, spec.enabled ?? true);
+            } else {
+                nodeGrouping = await applyGrouping(
+                    ogma,
+                    spec as Parameters<typeof applyGrouping>[1],
+                    nodeGrouping,
+                );
+            }
+            nodeGroupingSpec = spec;
         });
+    };
+
+    const applyStyleClassesFromModel = (): void => {
+        styleClasses = applyStyleClasses(
+            ogma,
+            typedModel.get("style_classes"),
+            styleClasses,
+        );
+    };
+
+    const applyGroupsLayoutFromModel = (): void => {
+        applyGroupsLayout(
+            ogma,
+            typedModel.get("groups_layout") as GroupsLayoutSpec | null,
+        );
+    };
+
+    const applyTransformationAnimationFromModel = (): void => {
+        applyTransformationAnimation(
+            ogma,
+            typedModel.get("transformation_animation") as TransformationAnimationSpec | null,
+        );
     };
 
     const applyEdgeGroupingFromModel = (): void => {
@@ -271,6 +339,9 @@ const render: Render<WidgetModel> = ({ model, el }) => {
     void (async () => {
         await loadGraph();
         applyStyles();
+        applyStyleClassesFromModel();
+        applyTransformationAnimationFromModel();
+        applyGroupsLayoutFromModel();
         applyNodeGroupingFromModel();
         applyEdgeGroupingFromModel();
         applyPendingOps();
@@ -280,6 +351,10 @@ const render: Render<WidgetModel> = ({ model, el }) => {
     // React to changes coming from Python.
     typedModel.on("change:graph_data", () => void loadGraph());
     typedModel.on("change:style_rules", applyStyles);
+    typedModel.on("change:style_classes", applyStyleClassesFromModel);
+    typedModel.on("change:ogma_options", applyOptions);
+    typedModel.on("change:groups_layout", applyGroupsLayoutFromModel);
+    typedModel.on("change:transformation_animation", applyTransformationAnimationFromModel);
     typedModel.on("change:graph_layout", () => void runInitialLayout());
     typedModel.on("change:node_grouping", applyNodeGroupingFromModel);
     typedModel.on("change:edge_grouping", applyEdgeGroupingFromModel);
@@ -299,6 +374,11 @@ const render: Render<WidgetModel> = ({ model, el }) => {
         if (msg.type === "run_layout") {
             const { name, options } = msg as RunLayoutMessage;
             void runLayout(ogma, name, options ?? {});
+        } else if (msg.type === "highlight") {
+            void highlight(ogma, msg as HighlightMessage);
+        } else if (msg.type === "trigger_groups_updated") {
+            // Queue behind pending grouping changes so the layout sees them.
+            void nodeGroupingQueue.then(() => triggerGroupsUpdated(ogma));
         }
     });
 

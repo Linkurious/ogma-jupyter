@@ -93,7 +93,7 @@ function convertValue(ogma: Ogma, value: unknown): unknown {
     return value;
 }
 
-function convertAttributes(
+export function convertAttributes(
     ogma: Ogma,
     attributes: Record<string, unknown>,
 ): Record<string, unknown> {
