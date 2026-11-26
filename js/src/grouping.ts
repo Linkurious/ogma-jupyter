@@ -1,5 +1,7 @@
 import type { Ogma, NodeGrouping, EdgeGrouping } from "@linkurious/ogma";
 
+import { resolveLayoutName } from "./layouts";
+
 type Grouping = NodeGrouping<unknown, unknown>;
 type EdgeGroupingHandle = EdgeGrouping<unknown, unknown>;
 
@@ -13,8 +15,105 @@ function toDataPath(key: string): string[] {
     return path.split(".");
 }
 
+/** Normalise a single path or a list of paths into `getData()` path arrays. */
+function toDataPaths(key: string | string[]): string[][] {
+    return (Array.isArray(key) ? key : [key]).map(toDataPath);
+}
+
 /**
- * Group nodes that share the value at `key` into a single meta-node, using
+ * Build a group id from the values at `paths`, joined with `-`. Returns
+ * `undefined` (element left ungrouped) when any of the values is missing.
+ */
+function groupIdFromPaths(
+    element: { getData: (path: string[]) => unknown },
+    paths: string[][],
+): string | undefined {
+    let id = "";
+    for (let i = 0; i < paths.length; i++) {
+        const value = element.getData(paths[i]);
+        if (value === undefined || value === null) return undefined;
+        id += i === 0 ? String(value) : `-${String(value)}`;
+    }
+    return id;
+}
+
+/**
+ * Plain-text `{{path}}` interpolation against a flat context, used for
+ * meta-node / meta-edge labels. Missing values render as an empty string.
+ */
+function renderLabel(template: string, ctx: Record<string, unknown>): string {
+    return template.replace(/\{\{\s*([^}]+?)\s*\}\}/g, (_, path: string) => {
+        let cur: unknown = ctx;
+        for (const key of path.split(".")) {
+            if (cur == null || typeof cur !== "object") return "";
+            cur = (cur as Record<string, unknown>)[key];
+        }
+        return cur == null ? "" : String(cur);
+    });
+}
+
+/** Evaluate an aggregate spec map over an Ogma NodeList/EdgeList. */
+function aggregateInto(
+    data: Record<string, unknown>,
+    entries: [string, AggregateOp][],
+    list: { getId: () => unknown; getData: (path: string[]) => unknown },
+): void {
+    for (const [outKey, spec] of entries) {
+        const values =
+            "field" in spec && spec.field
+                ? (list.getData(toDataPath(spec.field)) as unknown[])
+                : (list.getId() as unknown[]);
+        data[outKey] = reduceAggregate(spec, values);
+    }
+}
+
+/** Layout spec run inside each open group (`onGroupUpdate`). */
+export interface GroupLayoutSpec {
+    name: string;
+    params?: Record<string, unknown>;
+}
+
+/**
+ * Options accepted by `applyGrouping`. Pure JSON so it crosses the anywidget
+ * bridge — Ogma's function-valued options (`groupIdFunction`, `nodeGenerator`,
+ * `edgeGenerator`, `onGroupUpdate`) are synthesised here.
+ */
+export interface NodeGroupingOptions {
+    /** Data path(s) building the group id; nodes with a missing value stay ungrouped. */
+    key: string | string[];
+    /** Data path whose truthy value keeps a node in the grouping (`selector`). */
+    selectorKey?: string;
+    /** Prefix of the meta-node id (`<idPrefix><groupId>`); Ogma assigns ids when omitted. */
+    idPrefix?: string;
+    /** Static data merged into every meta-node. */
+    data?: Record<string, unknown>;
+    /** Aggregations over the grouped nodes; `data.count` is always added. */
+    dataAggregate?: Record<string, AggregateOp>;
+    /** Meta-node label template, `{{groupId}}` + any meta-node data field. Defaults to the group id. */
+    label?: string;
+    /** Aggregations written to the meta-edges' `data`; `data.count` is always added. */
+    edgeDataAggregate?: Record<string, AggregateOp>;
+    /** Forwarded to Ogma. */
+    showContents?: boolean;
+    /** Forwarded to Ogma. */
+    padding?: number;
+    /** Layout run inside each open group (`onGroupUpdate`). */
+    groupLayout?: GroupLayoutSpec;
+    /** Forwarded to Ogma. */
+    enabled?: boolean;
+}
+
+/** Ensure `count` is part of an aggregate map and return it as entries. */
+function withCount(
+    aggregate: Record<string, AggregateOp> | undefined,
+): [string, AggregateOp][] {
+    const out: Record<string, AggregateOp> = { ...(aggregate ?? {}) };
+    if (!("count" in out)) out.count = { op: "count" };
+    return Object.entries(out);
+}
+
+/**
+ * Group nodes that share the value(s) at `key` into a single meta-node, using
  * Ogma's node-grouping transformation.
  *
  * Any previously-applied grouping is destroyed first so repeated calls (and
@@ -24,31 +123,89 @@ function toDataPath(key: string): string[] {
  */
 export async function applyGrouping(
     ogma: Ogma,
-    key: string,
+    options: NodeGroupingOptions,
     previous: Grouping | null,
 ): Promise<Grouping | null> {
     await removeGrouping(previous);
 
-    const path = toDataPath(key);
+    const {
+        key,
+        selectorKey,
+        idPrefix,
+        data: staticData,
+        dataAggregate,
+        label,
+        edgeDataAggregate,
+        showContents,
+        padding,
+        groupLayout,
+        enabled,
+    } = options;
+    const paths = toDataPaths(key);
+    const selectorPath = selectorKey ? toDataPath(selectorKey) : null;
+    const nodeEntries = withCount(dataAggregate);
+    const edgeEntries = edgeDataAggregate ? withCount(edgeDataAggregate) : null;
     try {
         const grouping = ogma.transformations.addNodeGrouping({
-            groupIdFunction: (node) => {
-                const value = node.getData(path);
-                return value === undefined || value === null
-                    ? undefined
-                    : String(value);
+            ...(selectorPath
+                ? { selector: (node) => Boolean(node.getData(selectorPath)) }
+                : {}),
+            groupIdFunction: (node) => groupIdFromPaths(node, paths),
+            nodeGenerator: (nodes, groupId) => {
+                const data: Record<string, unknown> = { groupId, ...staticData };
+                aggregateInto(data, nodeEntries, nodes);
+                const text = label === undefined ? groupId : renderLabel(label, data);
+                data.label = text;
+                return {
+                    ...(idPrefix !== undefined ? { id: `${idPrefix}${groupId}` } : {}),
+                    data,
+                    attributes: { text },
+                };
             },
-            nodeGenerator: (_nodes, groupId) => ({
-                data: { label: groupId },
-                attributes: { text: groupId },
-            }),
+            ...(edgeEntries
+                ? {
+                      edgeGenerator: (edges) => {
+                          const data: Record<string, unknown> = {};
+                          aggregateInto(data, edgeEntries, edges);
+                          return { data };
+                      },
+                  }
+                : {}),
+            ...(groupLayout
+                ? {
+                      onGroupUpdate: () =>
+                          ({
+                              layout: resolveLayoutName(groupLayout.name),
+                              params: groupLayout.params ?? {},
+                          }) as never,
+                  }
+                : {}),
+            ...(showContents !== undefined ? { showContents } : {}),
+            ...(padding !== undefined ? { padding } : {}),
+            ...(enabled !== undefined ? { enabled } : {}),
         });
         await grouping.whenApplied();
         void ogma.view.locateGraph();
         return grouping;
     } catch (error) {
-        console.error(`[ogma-jupyter] Grouping by "${key}" failed:`, error);
+        console.error(`[ogma-jupyter] Grouping by "${String(key)}" failed:`, error);
         return null;
+    }
+}
+
+/**
+ * Enable/disable an existing node or edge grouping in place, keeping its
+ * options (and the animated transition Ogma runs on toggle).
+ */
+export async function setGroupingEnabled(
+    grouping: Grouping | EdgeGroupingHandle | null,
+    enabled: boolean,
+): Promise<void> {
+    if (!grouping || grouping.isEnabled() === enabled) return;
+    try {
+        await (enabled ? grouping.enable() : grouping.disable());
+    } catch (error) {
+        console.error("[ogma-jupyter] Grouping toggle failed:", error);
     }
 }
 
@@ -65,22 +222,25 @@ export async function removeGrouping(
 }
 
 /**
- * A single aggregation applied to the edges in a group, producing one value
- * placed under `data[<outputKey>]` on the meta-edge. All specs are pure JSON
+ * A single aggregation applied to the nodes/edges in a group, producing one
+ * value placed under `data[<outputKey>]` on the meta-node/meta-edge. All specs are pure JSON
  * so they cross the anywidget bridge — evaluation happens JS-side.
  *
- * - `count`: number of edges in the group; `field` is ignored.
- * - `sum` | `min` | `max` | `avg`: numeric reduction over `edges.getData(field)`.
+ * - `count`: number of elements in the group; `field` is ignored.
+ * - `sum` | `min` | `max` | `avg`: numeric reduction over `list.getData(field)`.
  *   Non-numeric values are skipped; the result is `null` when no numeric value
  *   is available (except `sum`, which stays at `0`).
- * - `first` | `last`: the corresponding value from `edges.getData(field)`.
- * - `collect`: the array `edges.getData(field)` (or edge ids when `field` is omitted).
+ * - `first` | `last`: the corresponding value from `list.getData(field)`.
+ * - `collect`: the array `list.getData(field)` (or element ids when `field` is omitted).
  */
-export type EdgeAggregateOp =
+export type AggregateOp =
     | { op: "count"; field?: string }
     | { op: "sum" | "min" | "max" | "avg"; field: string }
     | { op: "first" | "last"; field: string }
     | { op: "collect"; field?: string };
+
+/** @deprecated kept for backwards compatibility, use `AggregateOp`. */
+export type EdgeAggregateOp = AggregateOp;
 
 /**
  * Options accepted by `applyEdgeGrouping`. Everything is serialisable so it can
@@ -89,8 +249,11 @@ export type EdgeAggregateOp =
  * declarative fields.
  */
 export interface EdgeGroupingOptions {
-    /** Data-property path used to build the `groupIdFunction`, e.g. `data.country`. */
-    key?: string;
+    /**
+     * Data-property path(s) used to build the `groupIdFunction`, e.g.
+     * `data.country`. Several paths are joined with `-` into one group id.
+     */
+    key?: string | string[];
     /**
      * Data-property path whose truthy value keeps an edge in the grouping.
      * Edges whose value is falsy/undefined are left ungrouped.
@@ -103,7 +266,12 @@ export interface EdgeGroupingOptions {
      * attributes, which is the Ogma-idiomatic pattern — don't write to
      * `attributes` from the generator.
      */
-    dataAggregate?: Record<string, EdgeAggregateOp>;
+    dataAggregate?: Record<string, AggregateOp>;
+    /**
+     * Meta-edge text template (`{{groupId}}` + any meta-edge data field).
+     * Defaults to the group id; `""` leaves meta-edges unlabelled.
+     */
+    label?: string;
     /** Forwarded to Ogma. */
     separateEdgesByDirection?: boolean;
     /** Forwarded to Ogma. */
@@ -115,7 +283,7 @@ function toNumberOrNull(value: unknown): number | null {
     return Number.isFinite(n) ? n : null;
 }
 
-function reduceAggregate(spec: EdgeAggregateOp, values: unknown[]): unknown {
+function reduceAggregate(spec: AggregateOp, values: unknown[]): unknown {
     switch (spec.op) {
         case "count":
             return values.length;
@@ -153,13 +321,14 @@ function reduceAggregate(spec: EdgeAggregateOp, values: unknown[]): unknown {
  * Merge edges into meta-edges using Ogma's edge-grouping transformation.
  *
  * With no options, all parallel edges (same source/target pair) are collapsed.
- * With `key`, edges are also required to share the value at that data path.
+ * With `key`, edges are also required to share the value(s) at that data path
+ * (or every one of those paths, when a list is given).
  *
  * Every meta-edge carries at least:
  * - `data.subEdges`: array of merged edge ids.
  * - `data.count`: number of merged edges (unless overridden via `dataAggregate`).
- * - `data.<keyField>`: the shared `key` value (when `key` is set).
- * - `attributes.text`: the group id.
+ * - `data.<keyField>`: the shared `key` value(s) (when `key` is set).
+ * - `attributes.text`: the group id, or the rendered `label` template.
  *
  * Anything else — meta-edge width, colour, etc. — is expected to be driven by
  * style rules bound to these `data.*` fields, not written directly to
@@ -180,53 +349,39 @@ export async function applyEdgeGrouping(
         key,
         selectorKey,
         dataAggregate,
+        label,
         separateEdgesByDirection,
         enabled,
     } = options ?? {};
 
-    const keyPath = key ? toDataPath(key) : null;
+    const keyPaths = key ? toDataPaths(key) : null;
     const selectorPath = selectorKey ? toDataPath(selectorKey) : null;
-    const keyField = keyPath ? keyPath[keyPath.length - 1] : undefined;
-
-    const aggregate: Record<string, EdgeAggregateOp> = { ...(dataAggregate ?? {}) };
-    if (!("count" in aggregate)) {
-        aggregate.count = { op: "count" };
-    }
-    const aggregateEntries = Object.entries(aggregate);
+    const aggregateEntries = withCount(dataAggregate);
 
     try {
         const grouping = ogma.transformations.addEdgeGrouping({
             ...(selectorPath
                 ? { selector: (edge) => Boolean(edge.getData(selectorPath)) }
                 : {}),
-            ...(keyPath
-                ? {
-                      groupIdFunction: (edge) => {
-                          const value = edge.getData(keyPath);
-                          return value === undefined || value === null
-                              ? undefined
-                              : String(value);
-                      },
-                  }
+            ...(keyPaths
+                ? { groupIdFunction: (edge) => groupIdFromPaths(edge, keyPaths) }
                 : {}),
             generator: (edges, groupId) => {
                 const data: Record<string, unknown> = {
                     subEdges: edges.getId(),
                 };
-                if (keyField) {
-                    const values = edges.getData(keyPath!) as unknown[];
-                    data[keyField] = Array.isArray(values) ? values[0] : values;
+                if (keyPaths) {
+                    for (const path of keyPaths) {
+                        const values = edges.getData(path) as unknown[];
+                        data[path[path.length - 1]] = Array.isArray(values) ? values[0] : values;
+                    }
                 }
-                for (const [outKey, spec] of aggregateEntries) {
-                    const values =
-                        "field" in spec && spec.field
-                            ? (edges.getData(toDataPath(spec.field)) as unknown[])
-                            : (edges.getId() as unknown[]);
-                    data[outKey] = reduceAggregate(spec, values);
-                }
+                aggregateInto(data, aggregateEntries, edges);
                 return {
                     data,
-                    attributes: { text: groupId },
+                    attributes: {
+                        text: label === undefined ? groupId : renderLabel(label, { groupId, ...data }),
+                    },
                 };
             },
             ...(separateEdgesByDirection !== undefined

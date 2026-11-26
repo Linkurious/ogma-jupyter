@@ -201,6 +201,51 @@ widget.group_nodes(key="data.department")
 widget.ungroup_nodes()
 ```
 
+Ogma's function-valued grouping options are replaced by declarative ones —
+precompute a "group id or `None`" field in Python for anything custom:
+
+```python
+widget.group_nodes(
+    key="data.victimOf",                # None → node stays ungrouped
+    id_prefix="victims-",               # meta-node ids: victims-<groupId>
+    data={"kind": "COMPUTER"},          # static meta-node data
+    label="{{count}} victims ({{groupId}})",
+    edge_data_aggregate={"firstSeen": {"op": "min", "field": "data.TIME"}},
+    show_contents=True,
+    group_layout="grid",                # onGroupUpdate
+    enabled=False,
+)
+widget.enable_node_grouping()           # toggle in place (animated)
+
+# Several keys are joined into one group id; label="" hides meta-edge texts.
+widget.group_edges(key=["data.kind", "data.AUTH_TYPE"], label="")
+```
+
+### Transformations
+
+```python
+widget.set_transformation_animation(duration=200, easing="quadraticInOut")
+widget.on_groups_updated("hierarchical", layer="level")  # onGroupsUpdated
+widget.trigger_groups_updated()                          # re-run it now
+```
+
+## Classes and highlighting
+
+```python
+widget.add_class("dimmed", node_attributes={"opacity": 0.2}, edge_attributes={"opacity": 0.2})
+
+# Dim everything but these raw ids; meta-nodes/edges containing them stay lit.
+widget.highlight(nodes=["a", "b"], edges=["e1"], duration=250)
+widget.clear_highlight()
+```
+
+## Ogma options
+
+```python
+widget = og.OgmaWidget(graph_data=graph, options={"backgroundColor": "#08090a"})
+widget.set_options({"interactions": {"zoom": {"onDoubleClick": True}}})
+```
+
 ## API reference
 
 ### `og.set_license(key, download=False)`
@@ -239,8 +284,16 @@ The core widget. All parameters are optional at construction time — you can se
 |---|---|
 | `add_style_rule(node_attributes=, edge_attributes=)` | Append a style rule |
 | `run_layout(name, **options)` | Run a layout algorithm |
-| `group_nodes(key)` | Group nodes by a data property path |
+| `group_nodes(key, ...)` | Group nodes by data property path(s) |
+| `enable_node_grouping(enabled=True)` / `disable_node_grouping()` | Toggle the node grouping in place |
 | `ungroup_nodes()` | Remove all groupings |
+| `group_edges(key=, ...)` / `ungroup_edges()` | Merge parallel edges |
+| `on_groups_updated(name, **options)` | Layout run on every group update |
+| `set_transformation_animation(duration=, easing=)` | Animate transformations |
+| `trigger_groups_updated()` | Re-run the group-update layout |
+| `add_class(name, node_attributes=, edge_attributes=)` | Declare a style class |
+| `highlight(nodes=, edges=, class_name=, duration=)` / `clear_highlight()` | Dim everything else |
+| `set_options(options)` | `ogma.setOptions` |
 
 ## Supported environments
 

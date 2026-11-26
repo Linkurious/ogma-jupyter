@@ -7,9 +7,10 @@ displayed, which would otherwise drop a ``self.send(...)`` on the floor.
 """
 
 import pytest
+from conftest import SAMPLE_GRAPH
 
 from ogma_jupyter import OgmaWidget
-from conftest import SAMPLE_GRAPH
+from ogma_jupyter.errors import OgmaDataError
 
 
 class TestGroupNodes:
@@ -107,3 +108,85 @@ class TestUngroupEdges:
         w = OgmaWidget()
         w.ungroup_edges()
         assert w.edge_grouping is None
+
+
+class TestGroupNodesOptions:
+    def test_group_nodes_list_key(self):
+        w = OgmaWidget(graph_data=SAMPLE_GRAPH)
+        w.group_nodes(key=("data.type", "data.country"))
+        assert w.node_grouping == {"key": ["data.type", "data.country"]}
+
+    def test_group_nodes_forwards_all_options(self):
+        w = OgmaWidget(graph_data=SAMPLE_GRAPH)
+        w.group_nodes(
+            key="data.victimOf",
+            selector_key="data.victim",
+            id_prefix="victims-",
+            data={"kind": "COMPUTER"},
+            data_aggregate={"total": {"op": "sum", "field": "data.score"}},
+            label="{{count}} victims ({{groupId}})",
+            edge_data_aggregate={"firstSeen": {"op": "min", "field": "data.TIME"}},
+            show_contents=True,
+            padding=4,
+            group_layout="grid",
+            enabled=False,
+        )
+        assert w.node_grouping == {
+            "key": "data.victimOf",
+            "selectorKey": "data.victim",
+            "idPrefix": "victims-",
+            "data": {"kind": "COMPUTER"},
+            "dataAggregate": {"total": {"op": "sum", "field": "data.score"}},
+            "label": "{{count}} victims ({{groupId}})",
+            "edgeDataAggregate": {"firstSeen": {"op": "min", "field": "data.TIME"}},
+            "showContents": True,
+            "padding": 4,
+            "groupLayout": {"name": "grid", "params": {}},
+            "enabled": False,
+        }
+
+    def test_group_layout_dict_is_normalized(self):
+        w = OgmaWidget(graph_data=SAMPLE_GRAPH)
+        w.group_nodes(key="data.type", group_layout={"name": "grid", "col_distance": 10})
+        assert w.node_grouping["groupLayout"] == {"name": "grid", "params": {"colDistance": 10}}
+
+    def test_group_layout_unknown_raises(self):
+        w = OgmaWidget(graph_data=SAMPLE_GRAPH)
+        with pytest.raises(OgmaDataError):
+            w.group_nodes(key="data.type", group_layout="nope")
+
+    def test_group_nodes_data_is_copied(self):
+        w = OgmaWidget(graph_data=SAMPLE_GRAPH)
+        data = {"kind": "COMPUTER"}
+        w.group_nodes(key="data.type", data=data)
+        data["kind"] = "MUTATED"
+        assert w.node_grouping["data"] == {"kind": "COMPUTER"}
+
+
+class TestEnableNodeGrouping:
+    def test_enable_keeps_spec(self):
+        w = OgmaWidget(graph_data=SAMPLE_GRAPH)
+        w.group_nodes(key="data.type", show_contents=True, enabled=False)
+        assert not w.node_grouping_enabled
+        w.enable_node_grouping()
+        assert w.node_grouping == {"key": "data.type", "showContents": True, "enabled": True}
+        assert w.node_grouping_enabled
+
+    def test_disable(self):
+        w = OgmaWidget(graph_data=SAMPLE_GRAPH)
+        w.group_nodes(key="data.type")
+        assert w.node_grouping_enabled
+        w.disable_node_grouping()
+        assert w.node_grouping == {"key": "data.type", "enabled": False}
+
+    def test_enable_without_grouping_raises(self):
+        w = OgmaWidget(graph_data=SAMPLE_GRAPH)
+        with pytest.raises(OgmaDataError):
+            w.enable_node_grouping()
+
+
+class TestGroupEdgesOptions:
+    def test_group_edges_list_key(self):
+        w = OgmaWidget(graph_data=SAMPLE_GRAPH)
+        w.group_edges(key=["data.kind", "data.AUTH_TYPE"], label="")
+        assert w.edge_grouping == {"key": ["data.kind", "data.AUTH_TYPE"], "label": ""}

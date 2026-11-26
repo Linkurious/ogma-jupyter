@@ -21,6 +21,15 @@ const LAYOUT_METHODS: Record<string, string> = {
     grid: "grid",
 };
 
+/**
+ * Resolve a Python layout name to the matching `ogma.layouts` method name, as
+ * expected by the `{ layout, params }` objects of `onGroupsUpdated` /
+ * `onGroupUpdate`. Unknown names are passed through unchanged.
+ */
+export function resolveLayoutName(name: string): string {
+    return LAYOUT_METHODS[name.toLowerCase()] ?? name;
+}
+
 type LayoutMethod = (options?: Record<string, unknown>) => Promise<unknown>;
 
 function resolveLayout(ogma: Ogma, name: string): LayoutMethod | null {

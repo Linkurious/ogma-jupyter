@@ -1,11 +1,9 @@
 """Tests for OgmaWidget style rules: add_style_rule(), style_rules traitlet."""
 
 import pytest
+
 from ogma_jupyter import OgmaWidget, rules
 from ogma_jupyter.errors import OgmaDataError
-
-from conftest import SAMPLE_GRAPH
-
 
 # ---------------------------------------------------------------------------
 # style_rules traitlet defaults
@@ -130,6 +128,5 @@ class TestAddStyleRuleValidation:
 class TestStyleRulesSync:
     def test_style_rules_traitlet_is_synced(self):
         """style_rules should have sync=True so it reaches the JS side."""
-        import traitlets
         trait = OgmaWidget.class_traits()["style_rules"]
         assert trait.metadata.get("sync") is True

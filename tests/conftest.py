@@ -1,9 +1,9 @@
 """Shared fixtures and helpers for ogma-jupyter tests."""
 
-import pytest
 from contextlib import contextmanager
 from unittest.mock import patch
 
+import pytest
 
 # ---------------------------------------------------------------------------
 # Sample graph data (RawGraph format — matches Ogma's native data model)
@@ -11,9 +11,21 @@ from unittest.mock import patch
 
 SAMPLE_GRAPH = {
     "nodes": [
-        {"id": "a", "attributes": {"x": 0, "y": -60}, "data": {"label": "Alice", "type": "person", "score": 10}},
-        {"id": "b", "attributes": {"x": -70, "y": 40}, "data": {"label": "Bob", "type": "org", "score": 50}},
-        {"id": "c", "attributes": {"x": 70, "y": 40}, "data": {"label": "Carol", "type": "person", "score": 30}},
+        {
+            "id": "a",
+            "attributes": {"x": 0, "y": -60},
+            "data": {"label": "Alice", "type": "person", "score": 10},
+        },
+        {
+            "id": "b",
+            "attributes": {"x": -70, "y": 40},
+            "data": {"label": "Bob", "type": "org", "score": 50},
+        },
+        {
+            "id": "c",
+            "attributes": {"x": 70, "y": 40},
+            "data": {"label": "Carol", "type": "person", "score": 30},
+        },
     ],
     "edges": [
         {"id": "e1", "source": "a", "target": "b", "data": {"weight": 1.0, "type": "owns"}},

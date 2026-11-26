@@ -1,6 +1,6 @@
 {
   "name": "ogma-jupyter",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Interactive Ogma graph visualization for Jupyter notebooks",
   "private": true,
   "type": "module",

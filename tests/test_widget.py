@@ -1,15 +1,14 @@
 """Tests for OgmaWidget core: instantiation, license key, graph_data, demo."""
 
 import os
-import pytest
 from unittest.mock import patch
+
+import pytest
+from conftest import SAMPLE_GRAPH
 
 import ogma_jupyter as og
 from ogma_jupyter import OgmaWidget
-from ogma_jupyter.errors import OgmaDataError, OgmaLicenseError
-
-from conftest import SAMPLE_GRAPH
-
+from ogma_jupyter.errors import OgmaDataError
 
 # ---------------------------------------------------------------------------
 # Module-level license key API

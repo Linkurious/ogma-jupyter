@@ -1,8 +1,8 @@
 """Tests for ogma_jupyter.rules: serializable rule descriptors."""
 
 import pytest
-from ogma_jupyter import rules
 
+from ogma_jupyter import rules
 
 # ---------------------------------------------------------------------------
 # rules.map — categorical data → value
