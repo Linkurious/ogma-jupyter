@@ -1,25 +1,23 @@
 """Tests for the Ogma JS downloader: HTTP fetch, cache, widget.js assembly."""
 
+import io
 import os
 import tarfile
-import io
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 import ogma_jupyter as og
 from ogma_jupyter.downloader import (
-    is_ogma_cached,
-    download_ogma,
+    OGMA_VERSION,
     assemble_widget_js,
     build_bundle_source,
+    download_ogma,
     get_cache_path,
     get_local_ogma_path,
-    OGMA_VERSION,
+    is_ogma_cached,
 )
 from ogma_jupyter.errors import OgmaLicenseError
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -276,7 +274,6 @@ class TestEnsureLocalBundleFile:
         assert ensure_local_bundle_file() is None
 
     def test_reassembles_when_core_is_newer(self, tmp_path, monkeypatch):
-        import os
         import time
 
         ogma = tmp_path / "ogma.umd.js"
@@ -354,8 +351,9 @@ class TestSetLicenseIntegration:
         mock_response.__enter__ = lambda s: s
         mock_response.__exit__ = MagicMock(return_value=False)
 
+        urlopen = "ogma_jupyter.downloader.urllib.request.urlopen"
         with patch("ogma_jupyter.downloader.CACHE_DIR", tmp_path), \
-             patch("ogma_jupyter.downloader.urllib.request.urlopen", return_value=mock_response) as mock_dl:
+             patch(urlopen, return_value=mock_response) as mock_dl:
             og.set_license("a-key", download=True)
 
         mock_dl.assert_called_once()

@@ -90,7 +90,9 @@ def _frame(t: float) -> Image.Image:
         color = PALETTE[role]
         d.ellipse((x - r, y - r, x + r, y + r), fill=color, outline=BG, width=3 * SS)
         tb = d.textbbox((0, 0), nid, font=label_font)
-        d.text((x - (tb[2] - tb[0]) / 2, y + r + 3 * SS), nid, font=label_font, fill=(200, 208, 218))
+        d.text(
+            (x - (tb[2] - tb[0]) / 2, y + r + 3 * SS), nid, font=label_font, fill=(200, 208, 218)
+        )
 
     title_font = _font(26 * SS)
     sub_font = _font(14 * SS)

@@ -7,10 +7,10 @@ displayed, which would otherwise drop a ``self.send(...)`` on the floor.
 """
 
 import pytest
+from conftest import SAMPLE_GRAPH
 
 from ogma_jupyter import OgmaWidget
 from ogma_jupyter.errors import OgmaDataError
-from conftest import SAMPLE_GRAPH
 
 
 class TestGroupNodes:

@@ -2,10 +2,10 @@
 clear_highlight()."""
 
 import pytest
+from conftest import SAMPLE_GRAPH, capture_messages
 
 from ogma_jupyter import OgmaWidget, rules
 from ogma_jupyter.errors import OgmaDataError
-from conftest import SAMPLE_GRAPH, capture_messages
 
 
 class TestAddClass:

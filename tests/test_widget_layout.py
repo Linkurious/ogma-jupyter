@@ -1,13 +1,12 @@
 """Tests for OgmaWidget layout: run_layout() method and JS message."""
 
+
 import pytest
-from unittest.mock import patch
+from conftest import SAMPLE_GRAPH, capture_messages
 
 from ogma_jupyter import OgmaWidget
 from ogma_jupyter.errors import OgmaDataError
 from ogma_jupyter.widget import VALID_LAYOUTS
-from conftest import SAMPLE_GRAPH, capture_messages
-
 
 # ---------------------------------------------------------------------------
 # Valid layout names

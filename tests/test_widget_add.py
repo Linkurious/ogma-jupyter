@@ -7,10 +7,10 @@ whether they were enqueued before or after the widget was displayed.
 """
 
 import pytest
+from conftest import SAMPLE_GRAPH
 
 from ogma_jupyter import OgmaWidget
 from ogma_jupyter.errors import OgmaDataError
-from conftest import SAMPLE_GRAPH
 
 
 class TestAddNodes:
@@ -68,7 +68,10 @@ class TestAddEdges:
 class TestAddGraph:
     def test_appends_one_op(self):
         w = OgmaWidget(graph_data=SAMPLE_GRAPH)
-        w.add_graph({"nodes": [{"id": "z"}], "edges": [{"id": "e10", "source": "a", "target": "z"}]})
+        w.add_graph({
+            "nodes": [{"id": "z"}],
+            "edges": [{"id": "e10", "source": "a", "target": "z"}],
+        })
         assert w._pending_ops == [
             {
                 "seq": 1,
